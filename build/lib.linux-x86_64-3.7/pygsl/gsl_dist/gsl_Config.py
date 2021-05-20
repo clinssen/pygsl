@@ -339,7 +339,7 @@ class gsl_Config(conf):
         assert(self._gsl_location is not None)
         return self._gsl_location
 
-    def get_gsl_include_dirs(self):
+    def _get_gsl_include_dirs(self):
         dirs = self.gsl_location.get_gsl_include_dirs()
         return dirs
 
@@ -358,7 +358,7 @@ class gsl_Config(conf):
         else:
             dirs = list(dirs)
 
-        gsl_dirs = self.get_gsl_include_dirs()
+        gsl_dirs = self._get_gsl_include_dirs()
         dirs.extend(gsl_dirs)
         kws[include_dirs] = dirs
         return kws

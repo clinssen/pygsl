@@ -3727,19 +3727,18 @@ SwigPyBuiltin_iternextfunc_closure(SwigPyWrapperFunction wrapper, PyObject *a) {
 
 /* -------- TYPES TABLE (BEGIN) -------- */
 
-#define SWIGTYPE_p_SwigPyObject swig_types[0]
-#define SWIGTYPE_p_char swig_types[1]
-#define SWIGTYPE_p_double swig_types[2]
-#define SWIGTYPE_p_gsl_odeiv2_step swig_types[3]
-#define SWIGTYPE_p_gsl_odeiv2_step_type swig_types[4]
-#define SWIGTYPE_p_pygsl_odeiv2_control swig_types[5]
-#define SWIGTYPE_p_pygsl_odeiv2_driver swig_types[6]
-#define SWIGTYPE_p_pygsl_odeiv2_evolve swig_types[7]
-#define SWIGTYPE_p_pygsl_odeiv2_step swig_types[8]
-#define SWIGTYPE_p_pygsl_odeiv2_system swig_types[9]
-#define SWIGTYPE_p_void swig_types[10]
-static swig_type_info *swig_types[12];
-static swig_module_info swig_module = {swig_types, 11, 0, 0, 0, 0};
+#define SWIGTYPE_p_FILE swig_types[0]
+#define SWIGTYPE_p_SwigPyObject swig_types[1]
+#define SWIGTYPE_p_char swig_types[2]
+#define SWIGTYPE_p_double swig_types[3]
+#define SWIGTYPE_p_gsl_matrix swig_types[4]
+#define SWIGTYPE_p_gsl_splinalg_itersolve swig_types[5]
+#define SWIGTYPE_p_gsl_splinalg_itersolve_type swig_types[6]
+#define SWIGTYPE_p_gsl_vector swig_types[7]
+#define SWIGTYPE_p_pygsl_spmatrix swig_types[8]
+#define SWIGTYPE_p_void swig_types[9]
+static swig_type_info *swig_types[11];
+static swig_module_info swig_module = {swig_types, 10, 0, 0, 0, 0};
 #define SWIG_TypeQuery(name) SWIG_TypeQueryModule(&swig_module, &swig_module, name)
 #define SWIG_MangledTypeQuery(name) SWIG_MangledTypeQueryModule(&swig_module, &swig_module, name)
 
@@ -3765,16 +3764,16 @@ static swig_module_info swig_module = {swig_types, 11, 0, 0, 0, 0};
 #define SWIG_TypeQuery SWIG_Python_TypeQuery
 
 /*-----------------------------------------------
-              @(target):= _odeiv2.so
+              @(target):= _sparse_wrapper.so
   ------------------------------------------------*/
 #if PY_VERSION_HEX >= 0x03000000
-#  define SWIG_init    PyInit__odeiv2
+#  define SWIG_init    PyInit__sparse_wrapper
 
 #else
-#  define SWIG_init    init_odeiv2
+#  define SWIG_init    init_sparse_wrapper
 
 #endif
-#define SWIG_name    "_odeiv2"
+#define SWIG_name    "_sparse_wrapper"
 
 #define SWIGVERSION 0x030012 
 #define SWIG_VERSION SWIGVERSION
@@ -3787,78 +3786,144 @@ static swig_module_info swig_module = {swig_types, 11, 0, 0, 0, 0};
 #include <stddef.h>
 
 
-#include <stddef.h>
-#include <gsl/gsl_errno.h>
-#include <gsl/gsl_odeiv2.h>
-#include <pygsl/pygsl_features.h>
-#include <pygsl/block_helpers.h>
+static PyObject *pygsl_sparse_matrix_module = NULL;
+#include <limits.h>
+#include <gsl/gsl_spmatrix.h>
+#include <gsl/gsl_spblas.h>
+#include <gsl/gsl_splinalg.h>
+#include <pygsl/utils.h>
+#include <pygsl/errorno.h>
 #include <pygsl/error_helpers.h>
-#include <odeiv_func2.ic>
+/* working around name clashes ... */
+struct _pygsl_spmatrix{
+  gsl_spmatrix *mat;
+};
 
-typedef struct{
-	gsl_odeiv2_system dydt;
-	PyGSL_odeiv_parameter_pass params;
-}pygsl_odeiv2_system;
+typedef struct _pygsl_spmatrix pygsl_spmatrix;
 
-/* 
- * workarounds to avoid name clashes: the methods extending the type would
- * otherwise get the same name by SWIG as the function names of GSL 
- *  
-*/
-typedef gsl_odeiv2_step pygsl_odeiv2_step;
-typedef struct{
-	gsl_odeiv2_control *control;
-	PyArrayObject *scale;
-	size_t dimension;
-} pygsl_odeiv2_control;
-/* avoid name clashes */
-typedef gsl_odeiv2_evolve pygsl_odeiv2_evolve;
-typedef struct{
-	gsl_odeiv2_driver * driver;
-	PyObject * sys;
-	PyArrayObject * scale;
-	size_t dimension;
-} pygsl_odeiv2_driver;
-	
-static int _pygsl_odeiv2_system_set_function(pygsl_odeiv2_system *self, PyObject * cb)
+/* static pygsl_spmatrix* pygsl_spmatrix_alloc_helper(void); */
+static pygsl_spmatrix* pygsl_spmatrix_alloc_helper(void)
 {
-	if(!PyCallable_Check(cb)){
-		PyGSL_ERROR("Object for function callback not callable!", GSL_EINVAL);
-	}
-	Py_XDECREF(self->params.py_func);
-	self->params.py_func = NULL;
-	self->params.py_func = cb;
-	Py_INCREF(self->params.py_func);
-	return GSL_SUCCESS;
+  pygsl_spmatrix * obj = NULL;
+  int line;
+
+  FUNC_MESS_BEGIN();
+  obj = (pygsl_spmatrix *) calloc(1, sizeof(pygsl_spmatrix));
+  if(obj == NULL){
+    line = __LINE__ - 2;
+    gsl_error("Failed to allocate space for pygsl_spmatrix",
+	      __FILE__, line, GSL_ENOMEM);
+    FUNC_MESS_FAILED();
+    return NULL;
+  }
+  obj->mat = NULL;
+
+  FUNC_MESS_END();
+  return obj;
 }
 
-static int _pygsl_odeiv2_system_set_jacobian(pygsl_odeiv2_system *self, PyObject * cb)
+static pygsl_spmatrix *pygsl_spmatrix_convert(const pygsl_spmatrix *src,
+					      gsl_spmatrix *(*func)(const gsl_spmatrix *) )
 {
-	if (cb == Py_None){
-		Py_XDECREF(self->params.py_jac);
-		self->params.py_jac = NULL;
-		self->dydt.jacobian = NULL;
-		return GSL_SUCCESS;
-	}
-	
-	if(!PyCallable_Check(cb)){
-		PyGSL_ERROR("Object for function callback not callable!", GSL_EINVAL);			
-	}
-	
-	Py_XDECREF(self->params.py_jac);
-	self->params.py_jac = cb;
-	Py_INCREF(self->params.py_jac);
-	self->dydt.jacobian = PyGSL_odeiv_jac;
-	return GSL_SUCCESS;
+    pygsl_spmatrix * obj = NULL;
+    int line = __LINE__, status = PyGSL_ANY;
+
+    FUNC_MESS_BEGIN();
+    obj = pygsl_spmatrix_alloc_helper();
+    if(obj == NULL){
+      line = __LINE__ - 2;
+      goto fail;
+    }
+
+    //obj->mat = gsl_spmatrix_ccs(src->mat);
+    obj->mat = func(src->mat);
+    if(obj->mat == NULL){
+      line = __LINE__ - 2;
+      goto fail;
+    }
+    FUNC_MESS_END();
+    return obj;
+
+  fail:
+    FUNC_MESS_FAILED();
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, __FILE__, __FUNCTION__, line);
+    PyGSL_error_flag(status);
+    return NULL;
+ }
+
+
+static void pygsl_spmatrix_free_helper(pygsl_spmatrix *self)
+{
+
+   if(self == NULL){
+     return;
+   }
+
+    if(self->mat){
+      gsl_spmatrix_free(self->mat);
+      self->mat = NULL;
+    }
+
+    free(self);
 }
 
-static int _pygsl_odeiv2_system_set_dimension(pygsl_odeiv2_system *self, size_t dimension)
+
+static pygsl_spmatrix*
+pygsl_spmatrix_memcpy_helper(const pygsl_spmatrix *self,
+			     int(*func)(gsl_spmatrix *, const gsl_spmatrix *) )
 {
-	self->params.dimension = dimension;
-	self->dydt.dimension = dimension;
-	
-	return GSL_SUCCESS;
+    pygsl_spmatrix * dst = NULL;
+    int line = __LINE__, status = PyGSL_ANY;
+    size_t nnz = 0, size1, size2;
+
+    FUNC_MESS_BEGIN();
+    dst = pygsl_spmatrix_alloc_helper();
+    if(dst == NULL){
+      line = __LINE__ - 2;
+      goto fail;
+    }
+
+    dst->mat = NULL;
+
+    if(self->mat == NULL){
+      line = __LINE__ - 2;
+      gsl_error("self->mat was NULL", __FILE__, line, GSL_ESANITY);
+      goto fail;
+    }
+
+    {
+      const gsl_spmatrix *mat = self->mat;
+      nnz = gsl_spmatrix_nnz(mat);
+
+      if (func == gsl_spmatrix_transpose_memcpy){
+	size1 = mat->size2;
+	size2 = mat->size1;
+      }else{
+	size1 = mat->size1;
+	size2 = mat->size2;
+      }
+      dst->mat = gsl_spmatrix_alloc_nzmax(size1, size2, nnz, mat->sptype);
+      if(dst->mat == NULL){
+	line = __LINE__ - 2;
+	goto fail;
+      }
+      status = func(dst->mat, mat);
+      if(status != GSL_SUCCESS){
+	line = __LINE__ - 2;
+	goto fail;
+      }
+    }
+    FUNC_MESS_END();
+    return dst;
+
+  fail:
+    FUNC_MESS_FAILED();
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, __FILE__, __FUNCTION__, line);
+    PyGSL_error_flag(status);
+    pygsl_spmatrix_free_helper(dst);
+    return NULL;
 }
+
 
 
    
@@ -3870,12 +3935,97 @@ typedef int gsl_error_flag_drop;
 PyObject *pygsl_module_for_error_treatment = NULL;
                         
 
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_system_set_func(pygsl_odeiv2_system *self,PyObject *cb){
-		return  _pygsl_odeiv2_system_set_function(self, cb);
+
+  /*
+   * Normally Microsofts (R) Visual C (TM) Compiler is used to compile python 
+   * on windows.
+   * When I used MinGW to compile I could not convert Python File Objects to 
+   * C File Structs (The function PyFile_AsFile generated a core). Therefore 
+   * I raise a python exception if someone tries to use this Code when it was 
+   * compiled with MinGW. Do you know a better solution? Perhaps how to get it 
+   * work?
+   */
+#ifdef __MINGW32__
+#define HANDLE_MINGW() \
+  do { \
+  PyGSL_add_traceback(NULL, __FILE__, __FUNCTION__, __LINE__); \
+  PyErr_SetString(PyExc_TypeError, "This Module was compiled using MinGW32. " \
+		  "Conversion of python files to C files is not supported.");\
+  goto fail; \
+  } while(0)
+#else
+#define HANDLE_MINGW()
+#endif   
+
+#include <pygsl/transition.h>
+
+#ifdef PyGSL_PY3K
+static FILE *
+_PyGSL_convert_object_to_file(PyObject *input)
+{
+
+	int fileno;
+	char *mode;
+	FILE * tmp = NULL;
+
+
+#if 0 /* XXX Check requires to be exported ... */
+	if (!PyFile_Check(input)) {
+		PyErr_SetString(PyExc_TypeError, "Need a file!");
+		return NULL;
 	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_system_set_jacobian(pygsl_odeiv2_system *self,PyObject *cb){
-		return  _pygsl_odeiv2_system_set_jacobian(self, cb);
+#endif 
+	fileno = PyObject_AsFileDescriptor(input);	
+	if (fileno < 0){
+		return NULL;
 	}
+
+	/* 
+	 * mode ... how to find the corresponding mode 
+	 * currently only the simulated annealing module is using this code ....
+	 * so what 
+	 */
+	mode = "w";
+	tmp = fdopen(fileno, mode);
+	if(tmp == NULL){
+		PyErr_SetString(PyExc_TypeError, 
+				"Could not convert the file descriptor to a file stream!");
+	}
+	return tmp;	
+}
+#else /* PyGSL_PY3K */
+static FILE *
+_PyGSL_convert_object_to_file(PyObject *input)
+{
+	FILE * tmp = NULL;
+	if (!PyFile_Check(input)) {
+		PyErr_SetString(PyExc_TypeError, "Need a file!");
+		return NULL;
+	}
+	tmp = PyFile_AsFile(input);
+	return tmp;	
+}
+#endif /* PyGSL_PY3K */
+
+
+#include <pygsl/utils.h>
+#include <pygsl/block_helpers.h>
+#include <typemaps/block_conversion_functions.h>
+#include <string.h>
+#include <assert.h>
+
+
+const int TRIPLET = GSL_SPMATRIX_TRIPLET;
+const int CCS = GSL_SPMATRIX_CCS;
+const int CRS = GSL_SPMATRIX_CRS;
+
+
+SWIGINTERNINLINE PyObject*
+  SWIG_From_int  (int value)
+{
+  return PyInt_FromLong((long) value);
+}
+
 
 SWIGINTERN int
 SWIG_AsVal_double (PyObject *obj, double *val)
@@ -4083,74 +4233,208 @@ SWIG_AsVal_size_t (PyObject * obj, size_t *val)
   return res;
 }
 
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_system_set_dimension(pygsl_odeiv2_system *self,size_t dimension){
-		return _pygsl_odeiv2_system_set_dimension(self, dimension);
-	}
-SWIGINTERN pygsl_odeiv2_system *new_pygsl_odeiv2_system(PyObject *func,PyObject *jac,size_t dimension,PyObject *args){
-		pygsl_odeiv2_system *sys = NULL;
-		int flag;
-		
-		sys = PyMem_NEW(pygsl_odeiv2_system, 1);
-		sys->params.py_func = NULL;
-		sys->params.py_jac = NULL;
-		sys->params.arguments = NULL;
-		sys->dydt.function = PyGSL_odeiv_func;
+SWIGINTERN pygsl_spmatrix *new_pygsl_spmatrix(size_t const n1,size_t const n2,unsigned long const nzmax,unsigned long const flags){
+    pygsl_spmatrix *obj = NULL;
 
-		flag = _pygsl_odeiv2_system_set_dimension(sys, dimension);
-		if(flag != GSL_SUCCESS){
-			goto fail;
-		}
-	
-		flag = _pygsl_odeiv2_system_set_function(sys, func);
-		if(flag != GSL_SUCCESS){
-			goto fail;
-		}
+    int line = 230,  status = PyGSL_ANY;
 
-		flag = _pygsl_odeiv2_system_set_jacobian(sys, jac);
-		if(flag != GSL_SUCCESS){
-			goto fail;
-		}
-		
-		sys->params.arguments = args;
-		Py_INCREF(sys->params.arguments);
+    FUNC_MESS_BEGIN();
 
-		sys->dydt.params = (void *)&sys->params;		
-		return sys;
+    obj = pygsl_spmatrix_alloc_helper();
+    if(obj == NULL){
+	line = 236 - 2;
+	status =  GSL_ENOMEM;
+	goto fail;
+    }
+    DEBUG_MESS(2, "Allocated pygsl_spmatrix object @ %p", (void *) obj);
 
-	  fail:
-		Py_XDECREF(sys->params.py_func);
-		Py_XDECREF(sys->params.py_jac);
-		Py_XDECREF(sys->params.arguments);
-		PyMem_FREE(sys);		
-		sys = NULL;
-		return NULL;				
-	}
-SWIGINTERN void delete_pygsl_odeiv2_system(pygsl_odeiv2_system *self){
-		Py_XDECREF(self->params.py_func);
+    if (nzmax == ULONG_MAX){
+      if (flags != ULONG_MAX){
+	line = 244 - 1;
+	status =  GSL_EINVAL;
+	DEBUG_MESS(2, "nzmax = %lu flags = %lu",
+		   (unsigned long) nzmax, (unsigned long) flags);
+	gsl_error("If nzmax is not defined, flags must not be defined neither",
+		  "src/block/gsl_sparse_wrapper.i", line, status);
+	goto fail;
+      }
+      obj->mat = gsl_spmatrix_alloc(n1, n2);
+    } else {
+      switch(flags){
+	/* known flags */
+      case GSL_SPMATRIX_TRIPLET:
+      case GSL_SPMATRIX_CCS:
+      case GSL_SPMATRIX_CRS:
+	break;
 
-		Py_XDECREF(self->params.py_jac);
-		Py_XDECREF(self->params.arguments);
-		self->dydt.function = NULL;
-		self->dydt.jacobian  = NULL;		
-		PyMem_FREE(self);
-		self = NULL;
+      default:
+	/* unknown do not trigger error in _alloc_nzmax */
+	{
+	  char msg[256];
+	  line = 265 - 8;
+	  status =  GSL_EINVAL;
+	  snprintf(msg, 254, "flag %lu specifiying type is not known%c", flags, '\0');
+	  msg[255] = 0;
+	  gsl_error(msg,  "src/block/gsl_sparse_wrapper.i", line, status);
+	  goto fail;
 	}
-SWIGINTERN pygsl_odeiv2_step *new_pygsl_odeiv2_step(gsl_odeiv2_step_type const *T,size_t dim){
-		if(T == NULL){
-			pygsl_error("Type None/NULL not accepted", "src/callback/gsl_odeiv2.i", 77 -1, GSL_EINVAL);
-			return NULL;
-		}
-		return gsl_odeiv2_step_alloc(T, dim);
-	}
-SWIGINTERN void delete_pygsl_odeiv2_step(pygsl_odeiv2_step *self){
-		gsl_odeiv2_step_free(self);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_step_reset(pygsl_odeiv2_step *self){
-		return gsl_odeiv2_step_reset(self);
-	}
-SWIGINTERN char const *pygsl_odeiv2_step_name(pygsl_odeiv2_step *self){
-		return gsl_odeiv2_step_name(self);
-	}
+      }
+      DEBUG_MESS(2, "Generating sparse matrix with n1 = %lu n2 = %lu, nzmax = %lu, flags = %lu",
+		 (unsigned long) n1, (unsigned long) n2, nzmax, flags);
+      obj->mat = gsl_spmatrix_alloc_nzmax(n1, n2, nzmax, flags);
+    }
+    if(obj->mat == NULL){
+      line = 278 -1;
+      status = PyGSL_ANY;
+      goto fail;
+    }
+    FUNC_MESS_END();
+    return obj;
+
+  fail:
+    FUNC_MESS_FAILED();
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, "src/block/gsl_sparse_wrapper.i", __FUNCTION__, line);
+    PyGSL_error_flag(status);
+    return NULL;
+  }
+SWIGINTERN void delete_pygsl_spmatrix(pygsl_spmatrix *self){
+    pygsl_spmatrix_free_helper(self);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_realloc(pygsl_spmatrix *self,size_t const nzmax){
+    return gsl_spmatrix_realloc(nzmax, self->mat);
+  }
+SWIGINTERN double pygsl_spmatrix_get(pygsl_spmatrix *self,size_t const i,size_t const j){
+    return gsl_spmatrix_get(self->mat, i, j);
+  }
+
+  #define SWIG_From_double   PyFloat_FromDouble 
+
+SWIGINTERN PyObject *pygsl_spmatrix_get_shape(pygsl_spmatrix *self){
+    PyObject * obj = NULL, *size1 = NULL, *size2 = NULL;
+    int line = 307, status = PyGSL_ANY;
+
+    FUNC_MESS_BEGIN();
+    size1 =  PyLong_FromSize_t(self->mat->size1);
+    if(size1 == NULL){
+      line = 312 -2;
+      goto fail;
+    }
+    size2 =  PyLong_FromSize_t(self->mat->size2);
+    if(size2 == NULL){
+      line = 317 -2;
+      goto fail;
+    }
+
+    obj = PyTuple_New(2);
+    if(obj == NULL){
+      line = 323 -2;
+      goto fail;
+    }
+
+    PyTuple_SET_ITEM(obj, 0, size1);
+    PyTuple_SET_ITEM(obj, 1, size2);
+
+    FUNC_MESS_END();
+    return obj;
+
+  fail:
+    FUNC_MESS_FAILED();
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, "src/block/gsl_sparse_wrapper.i", __FUNCTION__, line);
+    PyGSL_error_flag(status);
+    Py_XDECREF(size1);
+    Py_XDECREF(size2);
+    return NULL;
+
+  }
+SWIGINTERN PyObject *pygsl_spmatrix_get_val_or_none(pygsl_spmatrix *self,size_t const i,size_t const j){
+    double * ptr = NULL;
+    PyObject * obj = NULL;
+
+    FUNC_MESS_BEGIN();
+    ptr =  gsl_spmatrix_ptr(self->mat, i, j);
+    if(ptr){
+      obj = PyFloat_FromDouble(*ptr);
+    } else {
+      obj = Py_None;
+      Py_INCREF(obj);
+    }
+    FUNC_MESS_END();
+    return obj;
+}
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_set(pygsl_spmatrix *self,size_t const i,size_t const j,double const x){
+  return gsl_spmatrix_set(self->mat, i, j, x);
+}
+SWIGINTERN int pygsl_spmatrix_type_code(pygsl_spmatrix *self){
+    return self->mat->sptype;
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_set_from_triplet(pygsl_spmatrix *self,PyObject *i_o,PyObject *d_o){
+
+    PyArrayObject *indices = NULL, * data = NULL;
+    PyGSL_array_index_t stride_v, stride_m0=0, stride_m1=0, dim=0, elem, i, j;
+    double datum;
+    char *cptr = NULL, *idx_data = NULL, *data_data = NULL;
+    int status = GSL_EFAILED, line = 430;
+
+    FUNC_MESS_BEGIN();
+    indices = PyGSL_matrix_check(i_o,  -1, 2,
+				 PyGSL_BUILD_ARRAY_INFO(PyGSL_NON_CONTIGUOUS | PyGSL_INPUT_ARRAY, NPY_LONGLONG, sizeof(long), 1),
+				 NULL, NULL, NULL);
+    if(indices == NULL){
+      line = 437 - 5;
+      goto fail;
+    }
+    dim = PyArray_DIM(indices, 0);
+
+    data = PyGSL_vector_check(d_o, dim, PyGSL_DARRAY_INPUT(2), NULL, NULL);
+    if(data == NULL){
+      line = 444 - 2;
+      goto fail;
+    }
+
+    idx_data = PyArray_DATA(indices);
+    data_data = PyArray_DATA(data);
+
+    stride_m0 = PyArray_STRIDE(indices, 0);
+    stride_m1 = PyArray_STRIDE(indices, 1);
+
+    stride_v = PyArray_STRIDE(data, 0);
+
+
+    for(elem = 0; elem < dim; ++elem){
+      cptr = idx_data + stride_m0 * elem + stride_m1 * 0;
+      i = *((long long *) cptr);
+
+      cptr = idx_data + stride_m0 * elem + stride_m1 * 1;
+      j = *((long long *) cptr);
+
+      cptr = data_data + stride_v * elem;
+      datum = *((double *) cptr);
+
+      status = gsl_spmatrix_set(self->mat, i, j, datum);
+      if(status != GSL_SUCCESS){
+	line = 469 - 2;
+	goto fail;
+      }
+    }
+    FUNC_MESS_END();
+    return GSL_SUCCESS;
+
+  fail:
+    FUNC_MESS_FAILED();
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, "src/block/gsl_sparse_wrapper.i", __FUNCTION__, line);
+    Py_XDECREF(indices);
+    Py_XDECREF(data);
+    return status;
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_set_zero(pygsl_spmatrix *self){
+    return gsl_spmatrix_set_zero(self->mat);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_fwrite(pygsl_spmatrix *self,FILE *stream){
+    return gsl_spmatrix_fwrite(stream, self->mat);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_fread(pygsl_spmatrix *self,FILE *stream){
+    return gsl_spmatrix_fread(stream, self->mat);
+  }
 
 SWIGINTERN swig_type_info*
 SWIG_pchar_descriptor(void)
@@ -4162,6 +4446,486 @@ SWIG_pchar_descriptor(void)
     init = 1;
   }
   return info;
+}
+
+
+SWIGINTERN int
+SWIG_AsCharPtrAndSize(PyObject *obj, char** cptr, size_t* psize, int *alloc)
+{
+#if PY_VERSION_HEX>=0x03000000
+#if defined(SWIG_PYTHON_STRICT_BYTE_CHAR)
+  if (PyBytes_Check(obj))
+#else
+  if (PyUnicode_Check(obj))
+#endif
+#else  
+  if (PyString_Check(obj))
+#endif
+  {
+    char *cstr; Py_ssize_t len;
+#if PY_VERSION_HEX>=0x03000000
+#if !defined(SWIG_PYTHON_STRICT_BYTE_CHAR)
+    if (!alloc && cptr) {
+        /* We can't allow converting without allocation, since the internal
+           representation of string in Python 3 is UCS-2/UCS-4 but we require
+           a UTF-8 representation.
+           TODO(bhy) More detailed explanation */
+        return SWIG_RuntimeError;
+    }
+    obj = PyUnicode_AsUTF8String(obj);
+    if(alloc) *alloc = SWIG_NEWOBJ;
+#endif
+    PyBytes_AsStringAndSize(obj, &cstr, &len);
+#else
+    PyString_AsStringAndSize(obj, &cstr, &len);
+#endif
+    if (cptr) {
+      if (alloc) {
+	/* 
+	   In python the user should not be able to modify the inner
+	   string representation. To warranty that, if you define
+	   SWIG_PYTHON_SAFE_CSTRINGS, a new/copy of the python string
+	   buffer is always returned.
+
+	   The default behavior is just to return the pointer value,
+	   so, be careful.
+	*/ 
+#if defined(SWIG_PYTHON_SAFE_CSTRINGS)
+	if (*alloc != SWIG_OLDOBJ) 
+#else
+	if (*alloc == SWIG_NEWOBJ) 
+#endif
+	{
+	  *cptr = (char *)memcpy(malloc((len + 1)*sizeof(char)), cstr, sizeof(char)*(len + 1));
+	  *alloc = SWIG_NEWOBJ;
+	} else {
+	  *cptr = cstr;
+	  *alloc = SWIG_OLDOBJ;
+	}
+      } else {
+#if PY_VERSION_HEX>=0x03000000
+#if defined(SWIG_PYTHON_STRICT_BYTE_CHAR)
+	*cptr = PyBytes_AsString(obj);
+#else
+	assert(0); /* Should never reach here with Unicode strings in Python 3 */
+#endif
+#else
+	*cptr = SWIG_Python_str_AsChar(obj);
+#endif
+      }
+    }
+    if (psize) *psize = len + 1;
+#if PY_VERSION_HEX>=0x03000000 && !defined(SWIG_PYTHON_STRICT_BYTE_CHAR)
+    Py_XDECREF(obj);
+#endif
+    return SWIG_OK;
+  } else {
+#if defined(SWIG_PYTHON_2_UNICODE)
+#if defined(SWIG_PYTHON_STRICT_BYTE_CHAR)
+#error "Cannot use both SWIG_PYTHON_2_UNICODE and SWIG_PYTHON_STRICT_BYTE_CHAR at once"
+#endif
+#if PY_VERSION_HEX<0x03000000
+    if (PyUnicode_Check(obj)) {
+      char *cstr; Py_ssize_t len;
+      if (!alloc && cptr) {
+        return SWIG_RuntimeError;
+      }
+      obj = PyUnicode_AsUTF8String(obj);
+      if (PyString_AsStringAndSize(obj, &cstr, &len) != -1) {
+        if (cptr) {
+          if (alloc) *alloc = SWIG_NEWOBJ;
+          *cptr = (char *)memcpy(malloc((len + 1)*sizeof(char)), cstr, sizeof(char)*(len + 1));
+        }
+        if (psize) *psize = len + 1;
+
+        Py_XDECREF(obj);
+        return SWIG_OK;
+      } else {
+        Py_XDECREF(obj);
+      }
+    }
+#endif
+#endif
+
+    swig_type_info* pchar_descriptor = SWIG_pchar_descriptor();
+    if (pchar_descriptor) {
+      void* vptr = 0;
+      if (SWIG_ConvertPtr(obj, &vptr, pchar_descriptor, 0) == SWIG_OK) {
+	if (cptr) *cptr = (char *) vptr;
+	if (psize) *psize = vptr ? (strlen((char *)vptr) + 1) : 0;
+	if (alloc) *alloc = SWIG_OLDOBJ;
+	return SWIG_OK;
+      }
+    }
+  }
+  return SWIG_TypeError;
+}
+
+
+
+
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_fprintf(pygsl_spmatrix *self,FILE *stream,char const *format){
+    return gsl_spmatrix_fprintf(stream, self->mat, format);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_gsl_transpose_inplace(pygsl_spmatrix *self){
+    return gsl_spmatrix_transpose(self->mat);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_gsl_transpose2_inplace(pygsl_spmatrix *self){
+    return gsl_spmatrix_transpose2(self->mat);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_transpose_inplace(pygsl_spmatrix *self){
+    if(GSL_SPMATRIX_ISTRIPLET(self->mat)){
+      return gsl_spmatrix_transpose(self->mat);
+    } else {
+      return gsl_spmatrix_transpose2(self->mat);
+    }
+  }
+SWIGINTERN pygsl_spmatrix *pygsl_spmatrix_memcpy(pygsl_spmatrix *self){
+    return pygsl_spmatrix_memcpy_helper(self, gsl_spmatrix_memcpy);
+  }
+SWIGINTERN pygsl_spmatrix *pygsl_spmatrix_transpose_memcpy(pygsl_spmatrix *self){
+    return pygsl_spmatrix_memcpy_helper(self, gsl_spmatrix_transpose_memcpy);
+  }
+SWIGINTERN size_t pygsl_spmatrix_nnz(pygsl_spmatrix *self){
+    return gsl_spmatrix_nnz(self->mat);
+  }
+
+  #define SWIG_From_long   PyInt_FromLong 
+
+
+SWIGINTERNINLINE PyObject* 
+SWIG_From_unsigned_SS_long  (unsigned long value)
+{
+  return (value > LONG_MAX) ?
+    PyLong_FromUnsignedLong(value) : PyInt_FromLong((long)(value));
+}
+
+
+#ifdef SWIG_LONG_LONG_AVAILABLE
+SWIGINTERNINLINE PyObject* 
+SWIG_From_unsigned_SS_long_SS_long  (unsigned long long value)
+{
+  return (value > LONG_MAX) ?
+    PyLong_FromUnsignedLongLong(value) : PyInt_FromLong((long)(value));
+}
+#endif
+
+
+SWIGINTERNINLINE PyObject *
+SWIG_From_size_t  (size_t value)
+{    
+#ifdef SWIG_LONG_LONG_AVAILABLE
+  if (sizeof(size_t) <= sizeof(unsigned long)) {
+#endif
+    return SWIG_From_unsigned_SS_long  ((unsigned long)(value));
+#ifdef SWIG_LONG_LONG_AVAILABLE
+  } else {
+    /* assume sizeof(size_t) <= sizeof(unsigned long long) */
+    return SWIG_From_unsigned_SS_long_SS_long  ((unsigned long long)(value));
+  }
+#endif
+}
+
+SWIGINTERN int pygsl_spmatrix_equal(pygsl_spmatrix *self,pygsl_spmatrix *other){
+    return gsl_spmatrix_equal(self->mat, other->mat);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_minmax(pygsl_spmatrix *self,double *min_out,double *max_out){
+    return gsl_spmatrix_minmax(self->mat, min_out, max_out);
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_scale(pygsl_spmatrix *self,double const x){
+    return gsl_spmatrix_scale(self->mat, x);
+  }
+SWIGINTERN pygsl_spmatrix *pygsl_spmatrix_ccs(pygsl_spmatrix *self){
+    pygsl_spmatrix * obj = NULL;
+
+    obj =  pygsl_spmatrix_convert(self, gsl_spmatrix_ccs);
+    return obj;
+  }
+SWIGINTERN pygsl_spmatrix *pygsl_spmatrix_crs(pygsl_spmatrix *self){
+    pygsl_spmatrix * obj = NULL;
+
+    obj =  pygsl_spmatrix_convert(self, gsl_spmatrix_crs);
+    return obj;
+  }
+SWIGINTERN gsl_error_flag_drop pygsl_spmatrix_d2sp(pygsl_spmatrix *self,gsl_matrix const *A){
+    return gsl_spmatrix_d2sp(self->mat, A);
+  }
+SWIGINTERN PyObject *pygsl_spmatrix_sp2d(pygsl_spmatrix *self){
+    PyArrayObject * a_array = NULL;
+    gsl_matrix_view matrix;
+    gsl_matrix *A = NULL;
+    PyGSL_array_index_t dim[2], tmp;
+    size_t size1 = 0, size2 = 0;
+    int line = 567, status = PyGSL_ANY;
+
+    FUNC_MESS_BEGIN();
+
+    size1 = self->mat->size1;
+    size2 = self->mat->size2;
+
+    dim[0] = size1;
+    dim[1] = size2;
+    DEBUG_MESS(2, "Creating a dense matrix (np.array) with dimensions shape=(%ld,%ld)",
+	       (long) dim[0], (long) dim[1]);
+    a_array = PyGSL_New_Array(2, dim, NPY_DOUBLE);
+    if(a_array == NULL){
+      line = 580 - 2;
+      goto fail;
+    }
+
+    status = PyGSL_STRIDE_RECALC(PyArray_STRIDE(a_array, 0), sizeof(double), &tmp);
+    if(status != GSL_SUCCESS){
+      line = 586 - 2;
+      goto fail;
+    }
+    status = PyGSL_STRIDE_RECALC(PyArray_STRIDE(a_array, 1), sizeof(double), &tmp);
+    if(status != GSL_SUCCESS){
+      line = 591 - 2;
+      goto fail;
+    }
+    DEBUG_MESS(2, "Creating view from dense (np.array) "
+	       "np_array shape = (%ld,%ld) "
+	       "gsl_mat  shape = (%lu,%lu)",
+	       (long) dim[0], (long) dim[1], (unsigned long) size1, (unsigned long) size2);
+    matrix = gsl_matrix_view_array(PyArray_DATA(a_array), size1, size2);
+
+    status = gsl_spmatrix_sp2d(&matrix.matrix, self->mat);
+    if(status != GSL_SUCCESS){
+      line = 602 - 2;
+      goto fail;
+    }
+
+    return (PyObject *) a_array;
+    FUNC_MESS_END();
+
+  fail:
+    FUNC_MESS("FAIL");
+    PyGSL_add_traceback(pygsl_sparse_matrix_module, "src/block/gsl_sparse_wrapper.i", __FUNCTION__, line);
+    PyGSL_error_flag(status);
+
+    return NULL;
+  }
+
+  static PyObject * pygsl_spmatrix_shape_get(pygsl_spmatrix *self){
+    return pygsl_spmatrix_get_shape(self);
+  }
+
+
+  static int
+    pygsl_spmatrix_add(pygsl_spmatrix * c, const pygsl_spmatrix * a, const pygsl_spmatrix * b)
+  {
+    return gsl_spmatrix_add(c->mat, a->mat, b->mat);
+  }
+
+  /*
+  static int
+    pygsl_spmatrix_equal(const pygsl_spmatrix *a, const pygsl_spmatrix *b)
+  {
+    return gsl_spmatrix_equal(a->mat, b->mat);
+  }
+  */
+
+
+
+static pygsl_spmatrix * pygsl_spmatrix_fscanf(FILE * stream){
+  pygsl_spmatrix* obj = NULL;
+  int line, status = PyGSL_ANY;
+
+  FUNC_MESS_BEGIN();
+  obj = pygsl_spmatrix_alloc_helper();
+  if(obj == NULL){
+    line = __LINE__ - 2;
+    goto fail;
+  }
+
+  obj->mat = gsl_spmatrix_fscanf(stream);
+  if(obj->mat == NULL){
+    line = __LINE__ - 2;
+    goto fail;
+  }
+  FUNC_MESS_END();
+
+ fail:
+  FUNC_MESS_FAILED();
+  PyGSL_error_flag(status);
+  pygsl_spmatrix_free_helper(obj);
+  return NULL;
+}
+
+
+static PyObject *
+  pygsl_spblas_dgemv(const CBLAS_TRANSPOSE_t TransA, const double alpha, const pygsl_spmatrix * A, const gsl_vector * x, const double beta, PyObject *y)
+{
+  PyArrayObject * y_a = NULL;
+  gsl_vector_view y_v;
+  PyGSL_array_index_t dim = 0, tmp=0;
+  int line, status = PyGSL_ANY;
+
+  FUNC_MESS_BEGIN();
+  y_a = PyGSL_Copy_Array(y);
+  if(y_a == NULL){
+    line = __LINE__ -2;
+    status = GSL_ENOMEM;
+    goto fail;
+  }
+  /* XXX
+   * Check array dimensions!
+   */
+  //Py_DECREF(y);
+  status = PyGSL_STRIDE_RECALC(PyArray_STRIDE(y_a, 0), sizeof(double), &tmp);
+  if(status != GSL_SUCCESS){
+    line = __LINE__ -2;
+    goto fail;
+  }
+  y_v = gsl_vector_view_array_with_stride(PyArray_DATA(y_a), tmp, PyArray_DIM(y_a, 0));
+
+  NPY_BEGIN_ALLOW_THREADS
+  status = gsl_spblas_dgemv(TransA, alpha, A->mat, x, beta, &y_v.vector);
+  NPY_END_ALLOW_THREADS
+
+  if(status != GSL_SUCCESS){
+    line = __LINE__ -2;
+    goto fail;
+  }
+  FUNC_MESS_END();
+  return (PyObject *) y_a;
+
+ fail:
+  FUNC_MESS_FAILED();
+  Py_XDECREF(y_a);
+  PyGSL_error_flag(status);
+  return NULL;
+}
+
+int
+pygsl_spblas_dgemm(const double alpha, const pygsl_spmatrix * A, const pygsl_spmatrix * B, pygsl_spmatrix * C)
+{
+  int status;
+
+  NPY_BEGIN_ALLOW_THREADS
+  status = gsl_spblas_dgemm(alpha, A->mat, B->mat, C->mat);
+  NPY_END_ALLOW_THREADS
+    return status;
+}
+
+
+
+static PyObject *
+pygsl_splinalg_itersolve_iterate(const pygsl_spmatrix * A, const gsl_vector * b, const double tol, PyObject * x_o,  gsl_splinalg_itersolve *w)
+{
+
+  PyArrayObject * x_a = NULL, *x_in = NULL;
+  gsl_vector_view x_v;
+  PyGSL_array_index_t dim = 0, stride = 0;
+  int line, status = PyGSL_ANY;
+
+  FUNC_MESS_BEGIN();
+
+  dim = b->size;
+  x_in = PyGSL_vector_check(x_o, dim, PyGSL_DARRAY_INPUT(5), &stride, NULL);
+  if(x_in == NULL){
+    line = __LINE__ -2;
+    status = GSL_ENOMEM;
+    goto fail;
+  }
+  x_a =  PyGSL_Copy_Array(x_in);
+  if(x_a == NULL){
+    line = __LINE__ -2;
+    status = GSL_ENOMEM;
+    goto fail;
+  }
+  Py_DECREF(x_in);
+  x_in = NULL;
+
+  DEBUG_MESS(2, "Created array x_a @ %p shape =(%ld,), stride = (%ld,)",
+	     (void *) x_a, (long)PyArray_DIM(x_a, 0), (long)PyArray_STRIDE(x_a, 0));
+
+  x_v = gsl_vector_view_array_with_stride(PyArray_DATA(x_a), stride, PyArray_DIM(x_a, 0));
+  DEBUG_MESS(2, "x vector view: vector @%p size %lu dim = %ld stride %lu set %ld",
+	     (void *)&x_v.vector, (unsigned long)  x_v.vector.size, (long) dim,
+	     (unsigned long) x_v.vector.stride, (long) stride);
+
+  NPY_BEGIN_ALLOW_THREADS
+  status = gsl_splinalg_itersolve_iterate(A->mat, b, tol, &x_v.vector, w);
+  NPY_END_ALLOW_THREADS
+
+  line = __LINE__ -1;
+  switch(status){
+  case GSL_SUCCESS:
+  case GSL_CONTINUE:
+    break;
+
+  default:
+    goto fail;
+  }
+  FUNC_MESS_END();
+  return (PyObject *) Py_BuildValue("iO", status, (PyObject *) x_a);
+
+ fail:
+  FUNC_MESS_FAILED();
+  Py_XDECREF(x_a);
+  Py_XDECREF(x_in);
+  PyGSL_error_flag(status);
+  return NULL;
+}
+
+
+SWIGINTERN int
+SWIG_AsVal_long (PyObject *obj, long* val)
+{
+#if PY_VERSION_HEX < 0x03000000
+  if (PyInt_Check(obj)) {
+    if (val) *val = PyInt_AsLong(obj);
+    return SWIG_OK;
+  } else
+#endif
+  if (PyLong_Check(obj)) {
+    long v = PyLong_AsLong(obj);
+    if (!PyErr_Occurred()) {
+      if (val) *val = v;
+      return SWIG_OK;
+    } else {
+      PyErr_Clear();
+      return SWIG_OverflowError;
+    }
+  }
+#ifdef SWIG_PYTHON_CAST_MODE
+  {
+    int dispatch = 0;
+    long v = PyInt_AsLong(obj);
+    if (!PyErr_Occurred()) {
+      if (val) *val = v;
+      return SWIG_AddCast(SWIG_OK);
+    } else {
+      PyErr_Clear();
+    }
+    if (!dispatch) {
+      double d;
+      int res = SWIG_AddCast(SWIG_AsVal_double (obj,&d));
+      if (SWIG_IsOK(res) && SWIG_CanCastAsInteger(&d, LONG_MIN, LONG_MAX)) {
+	if (val) *val = (long)(d);
+	return res;
+      }
+    }
+  }
+#endif
+  return SWIG_TypeError;
+}
+
+
+SWIGINTERN int
+SWIG_AsVal_int (PyObject * obj, int *val)
+{
+  long v;
+  int res = SWIG_AsVal_long (obj, &v);
+  if (SWIG_IsOK(res)) {
+    if ((v < INT_MIN || v > INT_MAX)) {
+      return SWIG_OverflowError;
+    } else {
+      if (val) *val = (int)(v);
+    }
+  }  
+  return res;
 }
 
 
@@ -4200,694 +4964,181 @@ SWIG_FromCharPtr(const char *cptr)
   return SWIG_FromCharPtrAndSize(cptr, (cptr ? strlen(cptr) : 0));
 }
 
-SWIGINTERN unsigned int pygsl_odeiv2_step_order(pygsl_odeiv2_step *self){
-		return gsl_odeiv2_step_order(self);
-	}
+SWIGINTERN gsl_splinalg_itersolve *new_gsl_splinalg_itersolve(gsl_splinalg_itersolve_type const *T,size_t const n,size_t const m){
+    gsl_splinalg_itersolve *obj = NULL;
+    obj = gsl_splinalg_itersolve_alloc(T, n, m);
+    return obj;
+  }
+SWIGINTERN void delete_gsl_splinalg_itersolve(gsl_splinalg_itersolve *self){
+    gsl_splinalg_itersolve_free(self);
+  }
+SWIGINTERN char const *gsl_splinalg_itersolve_get_name(gsl_splinalg_itersolve *self){
+    return gsl_splinalg_itersolve_name(self);
+  }
+SWIGINTERN PyObject *gsl_splinalg_itersolve_t_iterate(gsl_splinalg_itersolve *self,pygsl_spmatrix const *A,gsl_vector const *b,double const tol,PyObject *x){
+    return pygsl_splinalg_itersolve_iterate(A, b, tol, x, self);
+  }
+SWIGINTERN double gsl_splinalg_itersolve_t_normr(gsl_splinalg_itersolve *self){
+    return gsl_splinalg_itersolve_normr(self);
+  }
 
-SWIGINTERNINLINE PyObject*
-  SWIG_From_unsigned_SS_int  (unsigned int value)
-{
-  return PyInt_FromSize_t((size_t) value);
-}
+  static const char * gsl_splinalg_itersolve_name_get(gsl_splinalg_itersolve *self) {
+    return gsl_splinalg_itersolve_get_name(self);
+  }
 
-SWIGINTERN PyObject *pygsl_odeiv2_step_apply(pygsl_odeiv2_step *self,double t,double h,PyObject *y_o,PyObject *dydt_in_o,PyObject *dydt_out_o,pygsl_odeiv2_system *dydt){
-		
-		PyObject *returnobj = NULL, *three =NULL;
-		PyArrayObject *yerr_a = NULL, *dydt_in_a  = NULL, *dydt_out_a = NULL;
-		PyArrayObject *y_out_a = NULL, *y_in_a = NULL;
-		double * yerr = NULL, *dydt_in = NULL, *dydt_out = NULL, *y =NULL;
-		PyGSL_array_index_t dim = 0;
-		int flag, line = 113;
-
-		dim = dydt->params.dimension;
-
-		if(dydt == NULL){
-			line = 118 -1;
-			pygsl_error("Type None/NULL not accepted", "src/callback/gsl_odeiv2.i", line, GSL_EINVAL);
-			goto fail;
-		}
-			
-
-		y_in_a = PyGSL_vector_check(y_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(y_in_a == NULL){
-			line = 126 - 2; goto fail;
-		}
-
-		y_out_a = PyGSL_Copy_Array(y_in_a);
-		if(y_out_a == NULL){
-			line = 131 - 2; goto fail;
-		}
-		Py_DECREF(y_in_a);
-		y_in_a = NULL;
-
-		yerr_a = PyGSL_New_Array(1,  &dim, NPY_FLOAT);
-		if(yerr_a == NULL){
-			line = 138 - 2; goto fail;
-		}
-
-		if(dydt_in_o != Py_None){
-			dydt_in_a = PyGSL_New_Array(1,  &dim, NPY_FLOAT);
-			if(dydt_in_a == NULL){
-				line = 144 - 2; goto fail;
-			}
-			dydt_in = (double *)PyArray_DATA(dydt_in_a);
-		}
-
-		if(dydt_out_o != Py_None){
-			dydt_out_a = PyGSL_New_Array(1,  &dim, NPY_FLOAT);
-			if(dydt_out_a == NULL){
-				line = 152 - 2; goto fail;
-			}
-			dydt_out =  (double *) PyArray_DATA(dydt_out_a);
-		}
-
-		y =  (double *) PyArray_DATA(y_out_a);
-		if(y == NULL){
-			line = 159 - 2; goto fail;
-		}
-		yerr =  (double *) PyArray_DATA(yerr_a);		
-		if(yerr == NULL){
-			line = 163 - 2; goto fail;
-		}
-
-
-		flag = gsl_odeiv2_step_apply(self, t, h, y, yerr, dydt_in, dydt_out, &dydt->dydt);
-		if(GSL_SUCCESS != PyGSL_ERROR_FLAG(flag)){
-			line = 169 - 2; goto fail;
-		}
-		
-		Py_XDECREF(dydt_in_a);
-		dydt_in_a = NULL;
-
-		returnobj = PyTuple_New(3);
-		if (returnobj == NULL){
-			line = 177 - 2; goto fail;
-		}	
-		PyTuple_SetItem(returnobj, 0, (PyObject *) y_out_a);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) yerr_a);
-		if(dydt_out_a == NULL){
-			Py_INCREF(Py_None);
-			three = Py_None;
-		} else {
-			three = (PyObject *) dydt_out_a;
-		}
-		PyTuple_SetItem(returnobj, 2, three);
-
-		return returnobj;
-		
-	  fail:
-		PyGSL_add_traceback(NULL, "src/callback/gsl_odeiv2.i",  __FUNCTION__, line);
-		Py_XDECREF(y_in_a);
-		Py_XDECREF(y_out_a);
-		Py_XDECREF(yerr_a);
-		Py_XDECREF(dydt_in_a);
-		Py_XDECREF(dydt_out_a);
-
-		return NULL;
-
-	}
-
-const int hadj_inc = GSL_ODEIV_HADJ_INC;
-const int hadj_nil = GSL_ODEIV_HADJ_NIL;
-const int hadj_dec = GSL_ODEIV_HADJ_DEC;
-
-
-SWIGINTERNINLINE PyObject*
-  SWIG_From_int  (int value)
-{
-  return PyInt_FromLong((long) value);
-}
-
-SWIGINTERN pygsl_odeiv2_control *new_pygsl_odeiv2_control(double eps_abs,double eps_rel,double a_y,double a_dydt,PyObject *scale_abs){
-		size_t dim= 0;
-		PyArrayObject *sa = NULL;
-		double * s_abs;
-		pygsl_odeiv2_control * r = NULL;
-
-		r = (pygsl_odeiv2_control *) PyMem_Malloc(sizeof(pygsl_odeiv2_control));
-		if(r == NULL){
-			goto fail;
-		}
-		r->control = NULL;
-		r->scale = NULL;
-		r->dimension = 0;
-		
-		if(scale_abs == Py_None){
-			r->control = gsl_odeiv2_control_standard_new(eps_abs, eps_rel, a_y, a_dydt);
-			if(r->control == NULL){
-				goto fail;
-			}
-			return r;
-		}
-		/*
-		 * Warning potential crash ... wrapper must ensure that scale abs 
-		 * lives as long as required!
-		 * Thus reference in self->control
-		 */
-		sa =  PyGSL_vector_check(scale_abs, -1, PyGSL_DARRAY_CINPUT(5), NULL, NULL);
-		if(sa == NULL){
-			goto fail;
-		}
-		r->scale = sa;		
-		s_abs = (double *) PyArray_DATA(sa);		
-		r->control = gsl_odeiv2_control_scaled_new(eps_abs, eps_rel, a_y, a_dydt, s_abs, dim);
-		if(r->control == NULL){
-			goto fail;
-		}
-		return r;
-		
-	  fail:
-		Py_XDECREF(sa);
-		PyMem_FREE(r);
-		return NULL;
-	}
-SWIGINTERN void delete_pygsl_odeiv2_control(pygsl_odeiv2_control *self){
-		gsl_odeiv2_control_free(self->control);	       
-		self->control = NULL;
-		Py_XDECREF(self->scale);
-		self->scale = NULL;		
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_control_init(pygsl_odeiv2_control *self,double eps_abs,double eps_rel,double a_y,double a_dydt){
-		return gsl_odeiv2_control_init(self->control, eps_abs, eps_rel, a_y, a_dydt);
-	}
-SWIGINTERN char const *pygsl_odeiv2_control_name(pygsl_odeiv2_control *self){
-		return  gsl_odeiv2_control_name(self->control);
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_control_hadjust(pygsl_odeiv2_control *self,gsl_odeiv2_step *s,PyObject *y_o,PyObject *yerr_o,PyObject *dydt_o,double h_in){
-		PyObject *returnobj = NULL, *h_o = NULL, *flag_o = NULL;
-		PyArrayObject *y_a = NULL,  *yerr_a = NULL, *dydt_a = NULL;
-		double *dydt = NULL, *y = NULL, *yerr = NULL, h=0;
-		PyGSL_array_index_t dim=0;
-		int flag;
-
-
-		dim = s->dimension;
-		if(dim != self->dimension){
-			pygsl_error("dimension of step and control do not match!", "src/callback/gsl_odeiv2.i", 308-1, GSL_EINVAL);
-		}
-		y_a = PyGSL_vector_check(y_o, dim, PyGSL_DARRAY_CINPUT(2), NULL, NULL);
-		if(y_a == NULL){
-			goto fail;
-		}
-		yerr_a = PyGSL_vector_check(yerr_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(yerr_a == NULL){
-			goto fail;
-		}
-		dydt_a = PyGSL_vector_check(dydt_o, dim, PyGSL_DARRAY_CINPUT(4), NULL, NULL);
-		if(yerr_a == NULL){
-			goto fail;
-		}
-
-		y    = (double *) PyArray_DATA(y_a);
-		yerr = (double *) PyArray_DATA(yerr_a);
-		dydt = (double *) PyArray_DATA(dydt_a);
-
-		h = h_in;
-		flag = gsl_odeiv2_control_hadjust(self->control, s, y, yerr, dydt, &h);
-
-		flag_o = PyLong_FromLong((long) flag);
-		if(flag_o == NULL){
-			goto fail;
-		}
-
-		h_o = PyFloat_FromDouble(h);
-		if(h_o == NULL){
-			goto fail;
-		}
-
-		returnobj = PyTuple_New(2);
-		if (returnobj == NULL){
-			goto fail;
-		}	
-		PyTuple_SetItem(returnobj, 0, (PyObject *) flag_o);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) h_o);	       
-
-		Py_DECREF(y_a);
-		Py_DECREF(yerr_a);
-		Py_DECREF(dydt_a);
-		return  returnobj;
-
-	  fail:
-		Py_XDECREF(returnobj);
-		Py_XDECREF(y_a);
-		Py_XDECREF(yerr_a);
-		Py_XDECREF(dydt_a);
-		Py_XDECREF(h_o);
-		Py_XDECREF(flag_o);
-		return NULL;
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_control_errlevel(pygsl_odeiv2_control *self,double const y,double const dydt,double const h,size_t const ind,double *errlev){
-		return gsl_odeiv2_control_errlevel(self->control, y, dydt, h, ind, errlev);
-	}
-SWIGINTERN pygsl_odeiv2_evolve *new_pygsl_odeiv2_evolve(size_t dim){
-		return gsl_odeiv2_evolve_alloc(dim);
-	}
-SWIGINTERN void delete_pygsl_odeiv2_evolve(pygsl_odeiv2_evolve *self){
-		gsl_odeiv2_evolve_free(self);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_evolve_reset(pygsl_odeiv2_evolve *self){
-		return gsl_odeiv2_evolve_reset(self);
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_evolve_get_yerr(pygsl_odeiv2_evolve *self){
-		const gsl_vector_view v = gsl_vector_view_array(self->yerr, self->dimension);				
-		return (PyObject *) PyGSL_copy_gslvector_to_pyarray(&v.vector);
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_evolve_apply(pygsl_odeiv2_evolve *self,pygsl_odeiv2_control *con,pygsl_odeiv2_step *step,pygsl_odeiv2_system const *sys,double const t_in,double const t1,double const h_in,PyObject *y_in_o){
-		PyObject *t_out_o = NULL, *h_out_o = NULL, *s_o=NULL,  *returnobj = NULL;
-		PyArrayObject *y_in_a = NULL, *y_out_a = NULL;
-		double t, h, *y=NULL;
-		int status, line = 398;
-		PyGSL_array_index_t dim;
-
-		if(con == NULL){
-			pygsl_error("control object not set?", "src/callback/gsl_odeiv2.i", 402, GSL_EINVAL);
-			line = 403 - 2; goto fail;
-		}
-		if(step == NULL){
-			pygsl_error("step object not set?", "src/callback/gsl_odeiv2.i", 406, GSL_EINVAL);
-			line = 407 - 2; goto fail;
-		}
-		if(sys == NULL){
-			pygsl_error("sys object not set?", "src/callback/gsl_odeiv2.i", 410, GSL_EINVAL);
-			line = 411 - 2; goto fail;
-		}
-		dim = self->dimension;
-		if(sys->dydt.dimension != dim){
-			pygsl_error("sys dimension does not match evolve dimension", "src/callback/gsl_odeiv2.i", 415, GSL_EINVAL);
-			line = 416 - 2; goto fail;
-		}
-		y_in_a = PyGSL_vector_check(y_in_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(y_in_a == NULL){
-			line = 420 - 2; goto fail;
-		}
-
-		y_out_a = PyGSL_Copy_Array(y_in_a); 
-		if(y_out_a == NULL){
-			line = 425 - 2; goto fail;
-		}
-		Py_DECREF(y_in_a);
-		y_in_a = NULL;
-
-		y =  (double *) PyArray_DATA(y_out_a);
-		if(y == NULL){
-			line = 432 - 2; goto fail;
-		}
-
-		h = h_in;
-		t = t_in;
-
-		status = gsl_odeiv2_evolve_apply(self, con->control, step, &sys->dydt, &t, t1, &h, y);
-
-		if(GSL_SUCCESS != PyGSL_ERROR_FLAG(status)){
-			line = 441 - 2; goto fail;
-		}
-		s_o = PyLong_FromLong((long) status);
-		if(s_o == NULL){
-			line = 445 - 2; goto fail;
-		}
-		t_out_o = PyFloat_FromDouble(t);
-		if(t_out_o == NULL){
-			line = 449 - 2; goto fail;
-		}
-		h_out_o = PyFloat_FromDouble(h);
-		if(h_out_o == NULL){
-			line = 453 - 2; goto fail;
-		}
-		returnobj = PyTuple_New(4);
-		if (returnobj == NULL){
-			line = 457 - 2; goto fail;
-		}	
-		PyTuple_SetItem(returnobj, 0, (PyObject *) s_o);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) t_out_o);
-		PyTuple_SetItem(returnobj, 2, (PyObject *) h_out_o);
-		PyTuple_SetItem(returnobj, 3, (PyObject *) y_out_a);	       
-		return  returnobj;
-
-	  fail:
-		PyGSL_add_traceback(NULL, "src/callback/gsl_odeiv2.i",  __FUNCTION__, line);
-		Py_XDECREF(y_out_a);
-		Py_XDECREF(y_in_a);
-		Py_XDECREF(returnobj);
-		Py_XDECREF(t_out_o);
-		Py_XDECREF(h_out_o);
-		return NULL;
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_evolve_apply_fixed_step(pygsl_odeiv2_evolve *self,pygsl_odeiv2_control *con,pygsl_odeiv2_step *step,pygsl_odeiv2_system const *sys,double const t_in,double const h0,PyObject *y_in_o){
-
-		PyObject *t_out_o = NULL, *returnobj = NULL, *s_o = NULL;
-		PyArrayObject *y_in_a = NULL, *y_out_a = NULL;
-		double t, *y=NULL;
-		int status, line = 484;
-		PyGSL_array_index_t dim;
-
-		dim = self->dimension;
-		if(con == NULL){
-			pygsl_error("control object not set?", "src/callback/gsl_odeiv2.i", 489, GSL_EINVAL);
-			line = 490 - 2; goto fail;
-		}
-		if(step == NULL){
-			pygsl_error("step object not set?", "src/callback/gsl_odeiv2.i", 493, GSL_EINVAL);
-			line = 494 - 2; goto fail;
-		}
-		if(sys == NULL){
-			pygsl_error("sys object not set?", "src/callback/gsl_odeiv2.i", 497, GSL_EINVAL);
-			line = 498 - 2; goto fail;
-		}
-		if(sys->dydt.dimension != dim){
-			pygsl_error("sys dimension does not match evolve dimension", "src/callback/gsl_odeiv2.i", 501, GSL_EINVAL);
-			line = 502 - 2; goto fail;
-		}
-		y_in_a = PyGSL_vector_check(y_in_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(y_in_a == NULL){
-			line = 506 - 2; goto fail;
-		}
-
-		y_out_a = PyGSL_Copy_Array(y_in_a); 
-		if(y_out_a == NULL){
-			line = 511 - 2; goto fail;
-		}
-		Py_DECREF(y_in_a);
-		y_in_a = NULL;
-
-		y =  (double *) PyArray_DATA(y_out_a);
-		if(y == NULL){
-			line = 518 - 2; goto fail;
-		}
-
-		t = t_in;
-		status = gsl_odeiv2_evolve_apply_fixed_step(self, con->control, step, &sys->dydt, &t, h0, y);	
-		if(GSL_SUCCESS != PyGSL_ERROR_FLAG(status)){
-			line = 524 - 2; goto fail;
-		}
-
-		t_out_o = PyFloat_FromDouble(t);
-		if(t_out_o == NULL){
-			line = 529 - 2; goto fail;
-		}
-		s_o = PyLong_FromLong((long) status);
-		if(s_o == NULL){
-			line = 533 - 2; goto fail;
-		}
-		returnobj = PyTuple_New(3);
-		if (returnobj == NULL){
-			line = 537 - 2; goto fail;
-		}	
-		PyTuple_SetItem(returnobj, 0, (PyObject *) s_o);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) t_out_o);
-		PyTuple_SetItem(returnobj, 2, (PyObject *) y_out_a);	       
-		return  returnobj;
-
-	  fail:
-		PyGSL_add_traceback(NULL, "src/callback/gsl_odeiv2.i",  __FUNCTION__, line);
-		Py_XDECREF(y_out_a);
-		Py_XDECREF(y_in_a);
-		Py_XDECREF(t_out_o);
-		Py_XDECREF(returnobj);
-		return NULL;
-
-	}
-SWIGINTERN void delete_pygsl_odeiv2_driver(pygsl_odeiv2_driver *self){
-		DEBUG_MESS(2, "Freeing driver %p", (void *) self);
-		Py_XDECREF(self->scale);
-		Py_XDECREF(self->sys);
-		gsl_odeiv2_driver_free(self->driver);
-		PyMem_Free(self);
-		self = NULL;
-	}
-SWIGINTERN pygsl_odeiv2_driver *new_pygsl_odeiv2_driver(PyObject *sys_o,gsl_odeiv2_step_type const *T,double const hstart,double const epsabs,double const epsrel,double const a_y,double const a_dydt,PyObject *scale_abs_o){		
-		
-		pygsl_odeiv2_driver *d =NULL;
-		double *scale_abs;
-		PyArrayObject * scale_abs_a = NULL;
-		PyGSL_array_index_t dim = 0;
-		gsl_odeiv2_system * sys = NULL;
-		int flag;
-
-		FUNC_MESS_BEGIN();
-		flag = SWIG_ConvertPtr(sys_o, (void **) &sys, SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
-		if (!SWIG_IsOK(flag)) {
-			DEBUG_MESS(2, "sys_o = %p", (void *) sys_o);
-			PyErr_SetString(PyExc_TypeError, "Could not convert sys object to pointer");
-			goto fail;
-		}
-		if(sys == NULL){
-			DEBUG_MESS(2, "sys = %p", (void *) sys);
-			pygsl_error("sys None/NULL not accepted", "src/callback/gsl_odeiv2.i", 598 -1, GSL_EINVAL);
-			goto fail;
-		}
-		if(T == NULL){
-			DEBUG_MESS(2, "T = %p", (void *) T);
-			pygsl_error("Type None/NULL not accepted", "src/callback/gsl_odeiv2.i", 603 -1, GSL_EINVAL);
-			goto fail;
-		}
-
-		dim = sys->dimension;
-		d = (pygsl_odeiv2_driver *) PyMem_Malloc(sizeof(pygsl_odeiv2_driver));
-		if(d == NULL){
-			goto fail;
-		}
-		d->driver = NULL;
-		d->scale = NULL;
-		d->sys = NULL;
-		d->dimension = dim;
-		
-		/* 
-		 *  make sure the sys object lives as long as a reference to
-		 *  the sys memory is used
-		 */
-		d->sys = sys_o;
-		Py_INCREF(d->sys);
-
-		if(scale_abs_o == Py_None){
-			d->driver = gsl_odeiv2_driver_alloc_standard_new(sys, T, hstart, epsabs, epsrel, a_y, a_dydt);
-			if(d->driver == NULL){
-				goto fail;
-			}
-			return d;
-		}
-
-		scale_abs_a = PyGSL_New_Array(1, &dim, NPY_DOUBLE);
-		if(scale_abs_a == NULL){
-			return NULL;
-		}
-		d->scale = scale_abs_a;
-		scale_abs_a = NULL;
-		scale_abs =  (double *) PyArray_DATA(d->scale);
-		d->driver =  gsl_odeiv2_driver_alloc_scaled_new(sys, T, hstart, epsabs, epsrel, a_y, a_dydt, scale_abs);     
-		if(d->driver == NULL){
-			goto fail;
-		}
-		return d;
-
-	  fail:
-		FUNC_MESS("Fail");
-		if(d){
-			Py_XDECREF(d->scale);
-			Py_XDECREF(d->sys);
-			PyMem_Free(d);
-		}
-		return NULL;
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_driver_set_hmin(pygsl_odeiv2_driver *self,double const h_min){
-		return gsl_odeiv2_driver_set_hmin(self->driver, h_min);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_driver_set_hmax(pygsl_odeiv2_driver *self,double const h_max){
-		return gsl_odeiv2_driver_set_hmin(self->driver, h_max);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_driver_set_nmax(pygsl_odeiv2_driver *self,unsigned long const nmax){
-		return gsl_odeiv2_driver_set_nmax(self->driver, nmax);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_driver_reset(pygsl_odeiv2_driver *self){
-		return gsl_odeiv2_driver_reset(self->driver);
-	}
-SWIGINTERN gsl_error_flag_drop pygsl_odeiv2_driver_reset_hstart(pygsl_odeiv2_driver *self,double const hstart){
-#ifdef _PYGSL_GSL_HAS_ODEIV2_DRIVER_RESET_HSTART
-		return gsl_odeiv2_driver_reset_hstart(self->driver, hstart);
-#else
-	        PyGSL_ERROR_UNIMPL;
-#endif
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_driver_apply_fixed_step(pygsl_odeiv2_driver *self,double const tin,double const h,unsigned long const n,PyObject *y_o){
-		PyObject *returnobj = NULL, *t_out_o = NULL;
-		PyArrayObject *y_in_a = NULL, *y_out_a = NULL;
-		double *y = NULL, t=0;
-		PyGSL_array_index_t dim;
-		int status, line = 795;
-
-		t = tin;
-		dim = self->driver->sys->dimension;
-		y_in_a = PyGSL_vector_check(y_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(y_in_a == NULL){
-			line = 801 - 2; goto fail;
-		}
-
-		y_out_a = PyGSL_Copy_Array(y_in_a); 
-		if(y_out_a == NULL){
-			line = 806 - 2; goto fail;
-		}
-		Py_DECREF(y_in_a);
-		y_in_a = NULL;
-
-		y =  (double *) PyArray_DATA(y_out_a);
-		if(y == NULL){
-			line = 813 - 2; goto fail;
-		}
-
-		status = gsl_odeiv2_driver_apply_fixed_step(self->driver, &t, h, n, y);
-		DEBUG_MESS(2, "gsl_odeiv2_driver_apply_fixed_step failed with %d", status);
-		if(GSL_SUCCESS != PyGSL_ERROR_FLAG(status)){
-			line = 819 - 2; goto fail;
-		}
-		returnobj = PyTuple_New(2);
-		if (returnobj == NULL){
-			line = 823 - 2; goto fail;
-		}	
-		t_out_o = PyFloat_FromDouble(t);
-		if(t_out_o == NULL){
-			line = 827 - 2; goto fail;
-		}
-		PyTuple_SetItem(returnobj, 0, (PyObject *) t_out_o);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) y_out_a);	       
-		return  returnobj;
-
-	  fail:
-		PyGSL_add_traceback(NULL, "src/callback/gsl_odeiv2.i",  __FUNCTION__, line);
-		Py_XDECREF(y_out_a);
-		Py_XDECREF(y_in_a);
-		Py_XDECREF(returnobj);
-		Py_XDECREF(t_out_o);
-		return NULL;
-	}
-SWIGINTERN PyObject *pygsl_odeiv2_driver_apply(pygsl_odeiv2_driver *self,double const tin,double const t1,PyObject *y_o){
-		PyObject *returnobj = NULL, *t_out_o = NULL;
-		PyArrayObject *y_in_a = NULL, *y_out_a = NULL;
-		double *y = NULL, t=0;
-		PyGSL_array_index_t dim;
-		int status, line = 847;
-
-		t = tin;
-		dim = self->driver->sys->dimension;
-		y_in_a = PyGSL_vector_check(y_o, dim, PyGSL_DARRAY_CINPUT(3), NULL, NULL);
-		if(y_in_a == NULL){
-			line = 853 - 2; goto fail;
-		}
-
-		y_out_a = PyGSL_Copy_Array(y_in_a); 
-		if(y_out_a == NULL){
-			line = 858 - 2; goto fail;
-		}
-		Py_DECREF(y_in_a);
-		y_in_a = NULL;
-
-		y =  (double *) PyArray_DATA(y_out_a);
-		if(y == NULL){
-			line = 865 - 2; goto fail;
-		}
-
-		status = gsl_odeiv2_driver_apply(self->driver, &t, t1, y);
-		DEBUG_MESS(2, "gsl_odeiv2_driver_apply returned status %d", status);
-		if(GSL_SUCCESS != PyGSL_ERROR_FLAG(status)){
-			line = 871 - 2; goto fail;
-		}
-		t_out_o = PyFloat_FromDouble(t);
-		if(t_out_o == NULL){
-			line = 875 - 2; goto fail;
-		}
-		returnobj = PyTuple_New(2);
-		if (returnobj == NULL){
-			line = 879 - 2; goto fail;
-		}	
-		PyTuple_SetItem(returnobj, 0, (PyObject *) t_out_o);
-		PyTuple_SetItem(returnobj, 1, (PyObject *) y_out_a);	       
-		return  returnobj;
-
-	  fail:
-		FUNC_MESS("fail");
-		PyGSL_add_traceback(NULL, "src/callback/gsl_odeiv2.i",  __FUNCTION__, line);
-		Py_XDECREF(y_out_a);
-		Py_XDECREF(y_in_a);
-		Py_XDECREF(t_out_o);
-		Py_XDECREF(returnobj);
-		return NULL;
-	}
 #ifdef __cplusplus
 extern "C" {
 #endif
-SWIGINTERN PyObject *_wrap_system_set_func(PyObject *self, PyObject *args, PyObject *kwargs) {
+SWIGINTERN int Swig_var_TRIPLET_set(PyObject *_val SWIGUNUSED) {
+  SWIG_Error(SWIG_AttributeError,"Variable TRIPLET is read-only.");
+  return 1;
+}
+
+
+SWIGINTERN PyObject *Swig_var_TRIPLET_get(void) {
+  PyObject *pyobj = 0;
+  PyObject *self = 0;
+  
+  (void)self;
+  pyobj = SWIG_From_int((int)(TRIPLET));
+  return pyobj;
+}
+
+
+SWIGINTERN int Swig_var_CCS_set(PyObject *_val SWIGUNUSED) {
+  SWIG_Error(SWIG_AttributeError,"Variable CCS is read-only.");
+  return 1;
+}
+
+
+SWIGINTERN PyObject *Swig_var_CCS_get(void) {
+  PyObject *pyobj = 0;
+  PyObject *self = 0;
+  
+  (void)self;
+  pyobj = SWIG_From_int((int)(CCS));
+  return pyobj;
+}
+
+
+SWIGINTERN int Swig_var_CRS_set(PyObject *_val SWIGUNUSED) {
+  SWIG_Error(SWIG_AttributeError,"Variable CRS is read-only.");
+  return 1;
+}
+
+
+SWIGINTERN PyObject *Swig_var_CRS_get(void) {
+  PyObject *pyobj = 0;
+  PyObject *self = 0;
+  
+  (void)self;
+  pyobj = SWIG_From_int((int)(CRS));
+  return pyobj;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_shape_get(PyObject *self, PyObject *args) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_system *arg1 = (pygsl_odeiv2_system *) 0 ;
-  PyObject *arg2 = (PyObject *) 0 ;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "cb", NULL 
-  };
-  gsl_error_flag_drop result;
+  PyObject *swig_obj[1] ;
+  PyObject *result = 0 ;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:system_set_func",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_shape_get",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "system_set_func" "', argument " "1"" of type '" "pygsl_odeiv2_system *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_shape_get" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
   }
-  arg1 = (pygsl_odeiv2_system *)(argp1);
-  arg2 = obj1;
-  result = pygsl_odeiv2_system_set_func(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (PyObject *)pygsl_spmatrix_shape_get(arg1);
+  resultobj = result;
   return resultobj;
 fail:
   return NULL;
 }
 
 
-SWIGINTERN PyObject *_wrap_system_set_jacobian(PyObject *self, PyObject *args, PyObject *kwargs) {
+SWIGINTERN PyObject *_wrap_new_sparse_matrix(PyObject *self, PyObject *args, PyObject *kwargs) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_system *arg1 = (pygsl_odeiv2_system *) 0 ;
-  PyObject *arg2 = (PyObject *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
+  size_t arg1 ;
+  size_t arg2 ;
+  unsigned long arg3 = (unsigned long) (unsigned long)ULONG_MAX ;
+  unsigned long arg4 = (unsigned long) (unsigned long)ULONG_MAX ;
+  size_t val1 ;
+  int ecode1 = 0 ;
+  size_t val2 ;
+  int ecode2 = 0 ;
+  unsigned long val3 ;
+  int ecode3 = 0 ;
+  unsigned long val4 ;
+  int ecode4 = 0 ;
+  PyObject * obj0 = 0 ;
   PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  PyObject * obj3 = 0 ;
   char *  kwnames[] = {
-    (char *) "cb", NULL 
+    (char *) "n1",(char *) "n2",(char *) "nzmax",(char *) "flags", NULL 
   };
-  gsl_error_flag_drop result;
+  pygsl_spmatrix *result = 0 ;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:system_set_jacobian",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "system_set_jacobian" "', argument " "1"" of type '" "pygsl_odeiv2_system *""'"); 
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO|OO:new_sparse_matrix",kwnames,&obj0,&obj1,&obj2,&obj3)) SWIG_fail;
+  ecode1 = SWIG_AsVal_size_t(obj0, &val1);
+  if (!SWIG_IsOK(ecode1)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode1), "in method '" "new_sparse_matrix" "', argument " "1"" of type '" "size_t""'");
+  } 
+  arg1 = (size_t)(val1);
+  ecode2 = SWIG_AsVal_size_t(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "new_sparse_matrix" "', argument " "2"" of type '" "size_t""'");
+  } 
+  arg2 = (size_t)(val2);
+  if (obj2) {
+    ecode3 = SWIG_AsVal_unsigned_SS_long(obj2, &val3);
+    if (!SWIG_IsOK(ecode3)) {
+      SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "new_sparse_matrix" "', argument " "3"" of type '" "unsigned long""'");
+    } 
+    arg3 = (unsigned long)(val3);
   }
-  arg1 = (pygsl_odeiv2_system *)(argp1);
-  arg2 = obj1;
-  result = pygsl_odeiv2_system_set_jacobian(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
+  if (obj3) {
+    ecode4 = SWIG_AsVal_unsigned_SS_long(obj3, &val4);
+    if (!SWIG_IsOK(ecode4)) {
+      SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "new_sparse_matrix" "', argument " "4"" of type '" "unsigned long""'");
+    } 
+    arg4 = (unsigned long)(val4);
   }
+  result = (pygsl_spmatrix *)new_pygsl_spmatrix(arg1,arg2,arg3,arg4);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_OWN |  0 );
   return resultobj;
 fail:
   return NULL;
 }
 
 
-SWIGINTERN PyObject *_wrap_system_set_dimension(PyObject *self, PyObject *args, PyObject *kwargs) {
+SWIGINTERN PyObject *_wrap_delete_pygsl_spmatrix(PyObject *self, PyObject *args) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_system *arg1 = (pygsl_odeiv2_system *) 0 ;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"delete_pygsl_spmatrix",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_DISOWN |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_pygsl_spmatrix" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  delete_pygsl_spmatrix(arg1);
+  resultobj = SWIG_Py_Void();
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_realloc(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
   size_t arg2 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
@@ -4895,22 +5146,22 @@ SWIGINTERN PyObject *_wrap_system_set_dimension(PyObject *self, PyObject *args, 
   int ecode2 = 0 ;
   PyObject * obj1 = 0 ;
   char *  kwnames[] = {
-    (char *) "dimension", NULL 
+    (char *) "nzmax", NULL 
   };
   gsl_error_flag_drop result;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:system_set_dimension",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_realloc",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "system_set_dimension" "', argument " "1"" of type '" "pygsl_odeiv2_system *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_realloc" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
   }
-  arg1 = (pygsl_odeiv2_system *)(argp1);
+  arg1 = (pygsl_spmatrix *)(argp1);
   ecode2 = SWIG_AsVal_size_t(obj1, &val2);
   if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "system_set_dimension" "', argument " "2"" of type '" "size_t""'");
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spmatrix_realloc" "', argument " "2"" of type '" "size_t""'");
   } 
   arg2 = (size_t)(val2);
-  result = pygsl_odeiv2_system_set_dimension(arg1,arg2);
+  result = pygsl_spmatrix_realloc(arg1,arg2);
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
@@ -4927,111 +5178,1146 @@ fail:
 }
 
 
-SWIGINTERN int _wrap_new_system(PyObject *self, PyObject *args, PyObject *kwargs) {
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_get(PyObject *self, PyObject *args, PyObject *kwargs) {
   PyObject *resultobj = 0;
-  PyObject *arg1 = (PyObject *) 0 ;
-  PyObject *arg2 = (PyObject *) 0 ;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  size_t arg2 ;
   size_t arg3 ;
-  PyObject *arg4 = (PyObject *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  size_t val2 ;
+  int ecode2 = 0 ;
+  size_t val3 ;
+  int ecode3 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "i",(char *) "j", NULL 
+  };
+  double result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:pygsl_spmatrix_get",kwnames,&obj1,&obj2)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_get" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  ecode2 = SWIG_AsVal_size_t(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spmatrix_get" "', argument " "2"" of type '" "size_t""'");
+  } 
+  arg2 = (size_t)(val2);
+  ecode3 = SWIG_AsVal_size_t(obj2, &val3);
+  if (!SWIG_IsOK(ecode3)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_spmatrix_get" "', argument " "3"" of type '" "size_t""'");
+  } 
+  arg3 = (size_t)(val3);
+  result = (double)pygsl_spmatrix_get(arg1,arg2,arg3);
+  resultobj = SWIG_From_double((double)(result));
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_get_shape(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  PyObject *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_get_shape",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_get_shape" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (PyObject *)pygsl_spmatrix_get_shape(arg1);
+  resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_get_val_or_none(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  size_t arg2 ;
+  size_t arg3 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  size_t val2 ;
+  int ecode2 = 0 ;
+  size_t val3 ;
+  int ecode3 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "i",(char *) "j", NULL 
+  };
+  PyObject *result = 0 ;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:pygsl_spmatrix_get_val_or_none",kwnames,&obj1,&obj2)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_get_val_or_none" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  ecode2 = SWIG_AsVal_size_t(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spmatrix_get_val_or_none" "', argument " "2"" of type '" "size_t""'");
+  } 
+  arg2 = (size_t)(val2);
+  ecode3 = SWIG_AsVal_size_t(obj2, &val3);
+  if (!SWIG_IsOK(ecode3)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_spmatrix_get_val_or_none" "', argument " "3"" of type '" "size_t""'");
+  } 
+  arg3 = (size_t)(val3);
+  result = (PyObject *)pygsl_spmatrix_get_val_or_none(arg1,arg2,arg3);
+  resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_set(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  size_t arg2 ;
+  size_t arg3 ;
+  double arg4 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  size_t val2 ;
+  int ecode2 = 0 ;
+  size_t val3 ;
+  int ecode3 = 0 ;
+  double val4 ;
+  int ecode4 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  PyObject * obj3 = 0 ;
+  char *  kwnames[] = {
+    (char *) "i",(char *) "j",(char *) "x", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOO:pygsl_spmatrix_set",kwnames,&obj1,&obj2,&obj3)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_set" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  ecode2 = SWIG_AsVal_size_t(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spmatrix_set" "', argument " "2"" of type '" "size_t""'");
+  } 
+  arg2 = (size_t)(val2);
+  ecode3 = SWIG_AsVal_size_t(obj2, &val3);
+  if (!SWIG_IsOK(ecode3)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_spmatrix_set" "', argument " "3"" of type '" "size_t""'");
+  } 
+  arg3 = (size_t)(val3);
+  ecode4 = SWIG_AsVal_double(obj3, &val4);
+  if (!SWIG_IsOK(ecode4)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "pygsl_spmatrix_set" "', argument " "4"" of type '" "double""'");
+  } 
+  arg4 = (double)(val4);
+  result = pygsl_spmatrix_set(arg1,arg2,arg3,arg4);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_type_code(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  int result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_type_code",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_type_code" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (int)pygsl_spmatrix_type_code(arg1);
+  resultobj = SWIG_From_int((int)(result));
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_set_from_triplet(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  PyObject *arg2 = (PyObject *) 0 ;
+  PyObject *arg3 = (PyObject *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "i_o",(char *) "d_o", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:pygsl_spmatrix_set_from_triplet",kwnames,&obj1,&obj2)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_set_from_triplet" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  arg2 = obj1;
+  arg3 = obj2;
+  result = pygsl_spmatrix_set_from_triplet(arg1,arg2,arg3);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_set_zero(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  gsl_error_flag_drop result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_set_zero",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_set_zero" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_set_zero(arg1);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_fwrite(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  FILE *arg2 = (FILE *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "stream", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_fwrite",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_fwrite" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  {
+    FUNC_MESS_BEGIN();
+    HANDLE_MINGW();
+    arg2 = _PyGSL_convert_object_to_file(obj1);
+    if (arg2 == NULL) {
+      PyErr_SetString(PyExc_TypeError, "Need a file!");
+      PyGSL_add_traceback(NULL, "typemaps/file_typemaps.i", __FUNCTION__, 84);
+      goto fail;
+    }
+    FUNC_MESS("Convert Python File to C File");
+    DEBUG_MESS(2, "Using file at %p with filedes %d", (void *) arg2, fileno(arg2));
+    assert(arg2 != NULL);  
+  }
+  result = pygsl_spmatrix_fwrite(arg1,arg2);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_fread(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  FILE *arg2 = (FILE *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "stream", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_fread",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_fread" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  {
+    FUNC_MESS_BEGIN();
+    HANDLE_MINGW();
+    arg2 = _PyGSL_convert_object_to_file(obj1);
+    if (arg2 == NULL) {
+      PyErr_SetString(PyExc_TypeError, "Need a file!");
+      PyGSL_add_traceback(NULL, "typemaps/file_typemaps.i", __FUNCTION__, 84);
+      goto fail;
+    }
+    FUNC_MESS("Convert Python File to C File");
+    DEBUG_MESS(2, "Using file at %p with filedes %d", (void *) arg2, fileno(arg2));
+    assert(arg2 != NULL);  
+  }
+  result = pygsl_spmatrix_fread(arg1,arg2);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_fprintf(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  FILE *arg2 = (FILE *) 0 ;
+  char *arg3 = (char *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  int res3 ;
+  char *buf3 = 0 ;
+  int alloc3 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "stream",(char *) "format", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:pygsl_spmatrix_fprintf",kwnames,&obj1,&obj2)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_fprintf" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  {
+    FUNC_MESS_BEGIN();
+    HANDLE_MINGW();
+    arg2 = _PyGSL_convert_object_to_file(obj1);
+    if (arg2 == NULL) {
+      PyErr_SetString(PyExc_TypeError, "Need a file!");
+      PyGSL_add_traceback(NULL, "typemaps/file_typemaps.i", __FUNCTION__, 84);
+      goto fail;
+    }
+    FUNC_MESS("Convert Python File to C File");
+    DEBUG_MESS(2, "Using file at %p with filedes %d", (void *) arg2, fileno(arg2));
+    assert(arg2 != NULL);  
+  }
+  res3 = SWIG_AsCharPtrAndSize(obj2, &buf3, NULL, &alloc3);
+  if (!SWIG_IsOK(res3)) {
+    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_spmatrix_fprintf" "', argument " "3"" of type '" "char const *""'");
+  }
+  arg3 = (char *)(buf3);
+  result = pygsl_spmatrix_fprintf(arg1,arg2,(char const *)arg3);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  if (alloc3 == SWIG_NEWOBJ) free((char*)buf3);
+  return resultobj;
+fail:
+  if (alloc3 == SWIG_NEWOBJ) free((char*)buf3);
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_gsl_transpose_inplace(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  gsl_error_flag_drop result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_gsl_transpose_inplace",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_gsl_transpose_inplace" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_gsl_transpose_inplace(arg1);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_gsl_transpose2_inplace(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  gsl_error_flag_drop result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_gsl_transpose2_inplace",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_gsl_transpose2_inplace" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_gsl_transpose2_inplace(arg1);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_transpose_inplace(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  gsl_error_flag_drop result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_transpose_inplace",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_transpose_inplace" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_transpose_inplace(arg1);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_memcpy(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_memcpy",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_memcpy" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (pygsl_spmatrix *)pygsl_spmatrix_memcpy(arg1);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_OWN |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_transpose_memcpy(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_transpose_memcpy",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_transpose_memcpy" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (pygsl_spmatrix *)pygsl_spmatrix_transpose_memcpy(arg1);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_OWN |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_nnz(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  size_t result;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_nnz",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_nnz" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_nnz(arg1);
+  resultobj = SWIG_From_size_t((size_t)(result));
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_equal(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  pygsl_spmatrix *arg2 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  void *argp2 = 0 ;
+  int res2 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "other", NULL 
+  };
+  int result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_equal",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_equal" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res2)) {
+    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_spmatrix_equal" "', argument " "2"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg2 = (pygsl_spmatrix *)(argp2);
+  result = (int)pygsl_spmatrix_equal(arg1,arg2);
+  resultobj = SWIG_From_int((int)(result));
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_minmax(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  double *arg2 = (double *) 0 ;
+  double *arg3 = (double *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  double temp2 ;
+  int res2 = SWIG_TMPOBJ ;
+  double temp3 ;
+  int res3 = SWIG_TMPOBJ ;
+  PyObject *swig_obj[1] ;
+  gsl_error_flag_drop result;
+  
+  arg2 = &temp2;
+  arg3 = &temp3;
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_minmax",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_minmax" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = pygsl_spmatrix_minmax(arg1,arg2,arg3);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  if (SWIG_IsTmpObj(res2)) {
+    resultobj = SWIG_Python_AppendOutput(resultobj, SWIG_From_double((*arg2)));
+  } else {
+    int new_flags = SWIG_IsNewObj(res2) ? (SWIG_POINTER_OWN |  0 ) :  0 ;
+    resultobj = SWIG_Python_AppendOutput(resultobj, SWIG_NewPointerObj((void*)(arg2), SWIGTYPE_p_double, new_flags));
+  }
+  if (SWIG_IsTmpObj(res3)) {
+    resultobj = SWIG_Python_AppendOutput(resultobj, SWIG_From_double((*arg3)));
+  } else {
+    int new_flags = SWIG_IsNewObj(res3) ? (SWIG_POINTER_OWN |  0 ) :  0 ;
+    resultobj = SWIG_Python_AppendOutput(resultobj, SWIG_NewPointerObj((void*)(arg3), SWIGTYPE_p_double, new_flags));
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_scale(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  double arg2 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  double val2 ;
+  int ecode2 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "x", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_scale",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_scale" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  ecode2 = SWIG_AsVal_double(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spmatrix_scale" "', argument " "2"" of type '" "double""'");
+  } 
+  arg2 = (double)(val2);
+  result = pygsl_spmatrix_scale(arg1,arg2);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_ccs(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_ccs",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_ccs" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (pygsl_spmatrix *)pygsl_spmatrix_ccs(arg1);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_OWN |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_crs(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_crs",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_crs" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (pygsl_spmatrix *)pygsl_spmatrix_crs(arg1);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, SWIG_POINTER_OWN |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_d2sp(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  gsl_matrix *arg2 = (gsl_matrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "A", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  
+  PyArrayObject * _PyMatrix2 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix2;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_d2sp",kwnames,&obj1)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_d2sp" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj1, arg2, _PyMatrix2, _matrix2,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 2, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  result = pygsl_spmatrix_d2sp(arg1,(gsl_matrix const *)arg2);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
+    FUNC_MESS_END();
+  }
+  return resultobj;
+fail:
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
+    FUNC_MESS_END();
+  }
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_sp2d(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  PyObject *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_sp2d",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_sp2d" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  result = (PyObject *)pygsl_spmatrix_sp2d(arg1);
+  resultobj = result;
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_pygsl_spmatrix) /* defines _wrap_delete_pygsl_spmatrix_destructor_closure */
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_alloc_helper(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"pygsl_spmatrix_alloc_helper",0,0,0)) SWIG_fail;
+  result = (pygsl_spmatrix *)pygsl_spmatrix_alloc_helper();
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_add(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  pygsl_spmatrix *arg1 = (pygsl_spmatrix *) 0 ;
+  pygsl_spmatrix *arg2 = (pygsl_spmatrix *) 0 ;
+  pygsl_spmatrix *arg3 = (pygsl_spmatrix *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  void *argp2 = 0 ;
+  int res2 = 0 ;
+  void *argp3 = 0 ;
+  int res3 = 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "c",(char *) "a",(char *) "b", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOO:pygsl_spmatrix_add",kwnames,&obj0,&obj1,&obj2)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj0, &argp1,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_spmatrix_add" "', argument " "1"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg1 = (pygsl_spmatrix *)(argp1);
+  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res2)) {
+    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_spmatrix_add" "', argument " "2"" of type '" "pygsl_spmatrix const *""'"); 
+  }
+  arg2 = (pygsl_spmatrix *)(argp2);
+  res3 = SWIG_ConvertPtr(obj2, &argp3,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res3)) {
+    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_spmatrix_add" "', argument " "3"" of type '" "pygsl_spmatrix const *""'"); 
+  }
+  arg3 = (pygsl_spmatrix *)(argp3);
+  result = pygsl_spmatrix_add(arg1,(pygsl_spmatrix const *)arg2,(pygsl_spmatrix const *)arg3);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spmatrix_fscanf(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  FILE *arg1 = (FILE *) 0 ;
+  PyObject * obj0 = 0 ;
+  char *  kwnames[] = {
+    (char *) "stream", NULL 
+  };
+  pygsl_spmatrix *result = 0 ;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_spmatrix_fscanf",kwnames,&obj0)) SWIG_fail;
+  {
+    FUNC_MESS_BEGIN();
+    HANDLE_MINGW();
+    arg1 = _PyGSL_convert_object_to_file(obj0);
+    if (arg1 == NULL) {
+      PyErr_SetString(PyExc_TypeError, "Need a file!");
+      PyGSL_add_traceback(NULL, "typemaps/file_typemaps.i", __FUNCTION__, 84);
+      goto fail;
+    }
+    FUNC_MESS("Convert Python File to C File");
+    DEBUG_MESS(2, "Using file at %p with filedes %d", (void *) arg1, fileno(arg1));
+    assert(arg1 != NULL);  
+  }
+  result = (pygsl_spmatrix *)pygsl_spmatrix_fscanf(arg1);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spblas_dgemm(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  double arg1 ;
+  pygsl_spmatrix *arg2 = (pygsl_spmatrix *) 0 ;
+  pygsl_spmatrix *arg3 = (pygsl_spmatrix *) 0 ;
+  pygsl_spmatrix *arg4 = (pygsl_spmatrix *) 0 ;
+  double val1 ;
+  int ecode1 = 0 ;
+  void *argp2 = 0 ;
+  int res2 = 0 ;
+  void *argp3 = 0 ;
+  int res3 = 0 ;
+  void *argp4 = 0 ;
+  int res4 = 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  PyObject * obj3 = 0 ;
+  char *  kwnames[] = {
+    (char *) "alpha",(char *) "A",(char *) "B",(char *) "C", NULL 
+  };
+  gsl_error_flag_drop result;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:pygsl_spblas_dgemm",kwnames,&obj0,&obj1,&obj2,&obj3)) SWIG_fail;
+  ecode1 = SWIG_AsVal_double(obj0, &val1);
+  if (!SWIG_IsOK(ecode1)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode1), "in method '" "pygsl_spblas_dgemm" "', argument " "1"" of type '" "double""'");
+  } 
+  arg1 = (double)(val1);
+  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res2)) {
+    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_spblas_dgemm" "', argument " "2"" of type '" "pygsl_spmatrix const *""'"); 
+  }
+  arg2 = (pygsl_spmatrix *)(argp2);
+  res3 = SWIG_ConvertPtr(obj2, &argp3,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res3)) {
+    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_spblas_dgemm" "', argument " "3"" of type '" "pygsl_spmatrix const *""'"); 
+  }
+  arg3 = (pygsl_spmatrix *)(argp3);
+  res4 = SWIG_ConvertPtr(obj3, &argp4,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res4)) {
+    SWIG_exception_fail(SWIG_ArgError(res4), "in method '" "pygsl_spblas_dgemm" "', argument " "4"" of type '" "pygsl_spmatrix *""'"); 
+  }
+  arg4 = (pygsl_spmatrix *)(argp4);
+  result = pygsl_spblas_dgemm(arg1,(pygsl_spmatrix const *)arg2,(pygsl_spmatrix const *)arg3,arg4);
+  {
+    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
+    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
+      goto fail;
+    }
+    Py_INCREF(Py_None);
+    resultobj = Py_None;
+  }
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_pygsl_spblas_dgemv(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  int arg1 ;
+  double arg2 ;
+  pygsl_spmatrix *arg3 = (pygsl_spmatrix *) 0 ;
+  gsl_vector *arg4 = (gsl_vector *) 0 ;
+  double arg5 ;
+  PyObject *arg6 = (PyObject *) 0 ;
+  int val1 ;
+  int ecode1 = 0 ;
+  double val2 ;
+  int ecode2 = 0 ;
+  void *argp3 = 0 ;
+  int res3 = 0 ;
+  double val5 ;
+  int ecode5 = 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  PyObject * obj3 = 0 ;
+  PyObject * obj4 = 0 ;
+  PyObject * obj5 = 0 ;
+  char *  kwnames[] = {
+    (char *) "TransA",(char *) "alpha",(char *) "A",(char *) "x",(char *) "beta",(char *) "y", NULL 
+  };
+  PyObject *result = 0 ;
+  
+  
+  PyArrayObject * volatile _PyVector4 = NULL;
+  TYPE_VIEW_gsl_vector _vector4;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOO:pygsl_spblas_dgemv",kwnames,&obj0,&obj1,&obj2,&obj3,&obj4,&obj5)) SWIG_fail;
+  ecode1 = SWIG_AsVal_int(obj0, &val1);
+  if (!SWIG_IsOK(ecode1)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode1), "in method '" "pygsl_spblas_dgemv" "', argument " "1"" of type '" "int""'");
+  } 
+  arg1 = (int)(val1);
+  ecode2 = SWIG_AsVal_double(obj1, &val2);
+  if (!SWIG_IsOK(ecode2)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_spblas_dgemv" "', argument " "2"" of type '" "double""'");
+  } 
+  arg2 = (double)(val2);
+  res3 = SWIG_ConvertPtr(obj2, &argp3,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res3)) {
+    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_spblas_dgemv" "', argument " "3"" of type '" "pygsl_spmatrix const *""'"); 
+  }
+  arg3 = (pygsl_spmatrix *)(argp3);
+  
+  {
+    PyGSL_array_index_t stride=0;
+    if(PyGSL_VECTOR_CONVERT(obj3, arg4, _PyVector4, _vector4,
+        PyGSL_INPUT_ARRAY, gsl_vector, 4, &stride) != GSL_SUCCESS){
+      goto fail;
+    }
+  }
+  
+  ecode5 = SWIG_AsVal_double(obj4, &val5);
+  if (!SWIG_IsOK(ecode5)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "pygsl_spblas_dgemv" "', argument " "5"" of type '" "double""'");
+  } 
+  arg5 = (double)(val5);
+  arg6 = obj5;
+  result = (PyObject *)pygsl_spblas_dgemv(arg1,arg2,(pygsl_spmatrix const *)arg3,(gsl_vector const *)arg4,arg5,arg6);
+  resultobj = result;
+  {
+    Py_XDECREF(_PyVector4);
+    _PyVector4 = NULL;
+    FUNC_MESS_END();
+  }
+  return resultobj;
+fail:
+  {
+    Py_XDECREF(_PyVector4);
+    _PyVector4 = NULL;
+    FUNC_MESS_END();
+  }
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_gsl_splinalg_itersolve_name_get(PyObject *self, PyObject *args) {
+  PyObject *resultobj = 0;
+  gsl_splinalg_itersolve *arg1 = (gsl_splinalg_itersolve *) 0 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  PyObject *swig_obj[1] ;
+  char *result = 0 ;
+  
+  if (!SWIG_Python_UnpackTuple(args,"gsl_splinalg_itersolve_name_get",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve, 0 |  0 );
+  if (!SWIG_IsOK(res1)) {
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "gsl_splinalg_itersolve_name_get" "', argument " "1"" of type '" "gsl_splinalg_itersolve *""'"); 
+  }
+  arg1 = (gsl_splinalg_itersolve *)(argp1);
+  result = (char *)gsl_splinalg_itersolve_name_get(arg1);
+  resultobj = SWIG_FromCharPtr((const char *)result);
+  return resultobj;
+fail:
+  return NULL;
+}
+
+
+SWIGINTERN int _wrap_new_gsl_splinalg_itersolve(PyObject *self, PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  gsl_splinalg_itersolve_type *arg1 = (gsl_splinalg_itersolve_type *) 0 ;
+  size_t arg2 ;
+  size_t arg3 ;
+  void *argp1 = 0 ;
+  int res1 = 0 ;
+  size_t val2 ;
+  int ecode2 = 0 ;
   size_t val3 ;
   int ecode3 = 0 ;
   PyObject * obj1 = 0 ;
   PyObject * obj2 = 0 ;
   PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
   char *  kwnames[] = {
-    (char *) "func",(char *) "jac",(char *) "dimension",(char *) "args", NULL 
+    (char *) "T",(char *) "n",(char *) "m", NULL 
   };
-  pygsl_odeiv2_system *result = 0 ;
+  gsl_splinalg_itersolve *result = 0 ;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:new_system",kwnames,&obj1,&obj2,&obj3,&obj4)) SWIG_fail;
-  arg1 = obj1;
-  arg2 = obj2;
-  ecode3 = SWIG_AsVal_size_t(obj3, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "new_system" "', argument " "3"" of type '" "size_t""'");
-  } 
-  arg3 = (size_t)(val3);
-  arg4 = obj4;
-  result = (pygsl_odeiv2_system *)new_pygsl_odeiv2_system(arg1,arg2,arg3,arg4);
-  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_odeiv2_system, SWIG_BUILTIN_INIT |  0 );
-  return resultobj == Py_None ? -1 : 0;
-fail:
-  return -1;
-}
-
-
-SWIGINTERN PyObject *_wrap_delete_system(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_system *arg1 = (pygsl_odeiv2_system *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  
-  if (!SWIG_Python_UnpackTuple(args,"delete_system",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_system, SWIG_POINTER_DISOWN |  0 );
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOO:new_gsl_splinalg_itersolve",kwnames,&obj1,&obj2,&obj3)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(obj1, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve_type, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_system" "', argument " "1"" of type '" "pygsl_odeiv2_system *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "new_gsl_splinalg_itersolve" "', argument " "1"" of type '" "gsl_splinalg_itersolve_type const *""'"); 
   }
-  arg1 = (pygsl_odeiv2_system *)(argp1);
-  delete_pygsl_odeiv2_system(arg1);
-  resultobj = SWIG_Py_Void();
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_system) /* defines _wrap_delete_system_destructor_closure */
-
-SWIGINTERN int _wrap_new_pygsl_odeiv2_step(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  gsl_odeiv2_step_type *arg1 = (gsl_odeiv2_step_type *) 0 ;
-  size_t arg2 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  size_t val2 ;
-  int ecode2 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  char *  kwnames[] = {
-    (char *) "T",(char *) "dim", NULL 
-  };
-  pygsl_odeiv2_step *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:new_pygsl_odeiv2_step",kwnames,&obj1,&obj2)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(obj1, &argp1,SWIGTYPE_p_gsl_odeiv2_step_type, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "new_pygsl_odeiv2_step" "', argument " "1"" of type '" "gsl_odeiv2_step_type const *""'"); 
-  }
-  arg1 = (gsl_odeiv2_step_type *)(argp1);
+  arg1 = (gsl_splinalg_itersolve_type *)(argp1);
   ecode2 = SWIG_AsVal_size_t(obj2, &val2);
   if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "new_pygsl_odeiv2_step" "', argument " "2"" of type '" "size_t""'");
+    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "new_gsl_splinalg_itersolve" "', argument " "2"" of type '" "size_t""'");
   } 
   arg2 = (size_t)(val2);
-  result = (pygsl_odeiv2_step *)new_pygsl_odeiv2_step((gsl_odeiv2_step_type const *)arg1,arg2);
-  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_odeiv2_step, SWIG_BUILTIN_INIT |  0 );
+  ecode3 = SWIG_AsVal_size_t(obj3, &val3);
+  if (!SWIG_IsOK(ecode3)) {
+    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "new_gsl_splinalg_itersolve" "', argument " "3"" of type '" "size_t""'");
+  } 
+  arg3 = (size_t)(val3);
+  result = (gsl_splinalg_itersolve *)new_gsl_splinalg_itersolve((gsl_splinalg_itersolve_type const *)arg1,arg2,arg3);
+  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_gsl_splinalg_itersolve, SWIG_BUILTIN_INIT |  0 );
   return resultobj == Py_None ? -1 : 0;
 fail:
   return -1;
 }
 
 
-SWIGINTERN PyObject *_wrap_delete_pygsl_odeiv2_step(PyObject *self, PyObject *args) {
+SWIGINTERN PyObject *_wrap_delete_gsl_splinalg_itersolve(PyObject *self, PyObject *args) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_step *arg1 = (pygsl_odeiv2_step *) 0 ;
+  gsl_splinalg_itersolve *arg1 = (gsl_splinalg_itersolve *) 0 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
   PyObject *swig_obj[1] ;
   
-  if (!SWIG_Python_UnpackTuple(args,"delete_pygsl_odeiv2_step",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_step, SWIG_POINTER_DISOWN |  0 );
+  if (!SWIG_Python_UnpackTuple(args,"delete_gsl_splinalg_itersolve",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve, SWIG_POINTER_DISOWN |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_pygsl_odeiv2_step" "', argument " "1"" of type '" "pygsl_odeiv2_step *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_gsl_splinalg_itersolve" "', argument " "1"" of type '" "gsl_splinalg_itersolve *""'"); 
   }
-  arg1 = (pygsl_odeiv2_step *)(argp1);
-  delete_pygsl_odeiv2_step(arg1);
+  arg1 = (gsl_splinalg_itersolve *)(argp1);
+  delete_gsl_splinalg_itersolve(arg1);
   resultobj = SWIG_Py_Void();
   return resultobj;
 fail:
@@ -5039,52 +6325,21 @@ fail:
 }
 
 
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_step_reset(PyObject *self, PyObject *args) {
+SWIGINTERN PyObject *_wrap_gsl_splinalg_itersolve_get_name(PyObject *self, PyObject *args) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_step *arg1 = (pygsl_odeiv2_step *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  gsl_error_flag_drop result;
-  
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_step_reset",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_step_reset" "', argument " "1"" of type '" "pygsl_odeiv2_step *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_step *)(argp1);
-  result = pygsl_odeiv2_step_reset(arg1);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_step_name(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_step *arg1 = (pygsl_odeiv2_step *) 0 ;
+  gsl_splinalg_itersolve *arg1 = (gsl_splinalg_itersolve *) 0 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
   PyObject *swig_obj[1] ;
   char *result = 0 ;
   
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_step_name",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
+  if (!SWIG_Python_UnpackTuple(args,"gsl_splinalg_itersolve_get_name",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_step_name" "', argument " "1"" of type '" "pygsl_odeiv2_step *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "gsl_splinalg_itersolve_get_name" "', argument " "1"" of type '" "gsl_splinalg_itersolve *""'"); 
   }
-  arg1 = (pygsl_odeiv2_step *)(argp1);
-  result = (char *)pygsl_odeiv2_step_name(arg1);
+  arg1 = (gsl_splinalg_itersolve *)(argp1);
+  result = (char *)gsl_splinalg_itersolve_get_name(arg1);
   resultobj = SWIG_FromCharPtr((const char *)result);
   return resultobj;
 fail:
@@ -5092,1277 +6347,187 @@ fail:
 }
 
 
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_step_order(PyObject *self, PyObject *args) {
+SWIGINTERN PyObject *_wrap_gsl_splinalg_itersolve_iterate(PyObject *self, PyObject *args, PyObject *kwargs) {
   PyObject *resultobj = 0;
-  pygsl_odeiv2_step *arg1 = (pygsl_odeiv2_step *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  unsigned int result;
-  
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_step_order",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_step_order" "', argument " "1"" of type '" "pygsl_odeiv2_step *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_step *)(argp1);
-  result = (unsigned int)pygsl_odeiv2_step_order(arg1);
-  resultobj = SWIG_From_unsigned_SS_int((unsigned int)(result));
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_step_apply(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_step *arg1 = (pygsl_odeiv2_step *) 0 ;
-  double arg2 ;
-  double arg3 ;
-  PyObject *arg4 = (PyObject *) 0 ;
+  gsl_splinalg_itersolve *arg1 = (gsl_splinalg_itersolve *) 0 ;
+  pygsl_spmatrix *arg2 = (pygsl_spmatrix *) 0 ;
+  gsl_vector *arg3 = (gsl_vector *) 0 ;
+  double arg4 ;
   PyObject *arg5 = (PyObject *) 0 ;
-  PyObject *arg6 = (PyObject *) 0 ;
-  pygsl_odeiv2_system *arg7 = (pygsl_odeiv2_system *) 0 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  void *argp7 = 0 ;
-  int res7 = 0 ;
+  void *argp2 = 0 ;
+  int res2 = 0 ;
+  double val4 ;
+  int ecode4 = 0 ;
   PyObject * obj1 = 0 ;
   PyObject * obj2 = 0 ;
   PyObject * obj3 = 0 ;
   PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  PyObject * obj6 = 0 ;
   char *  kwnames[] = {
-    (char *) "t",(char *) "h",(char *) "y_o",(char *) "dydt_in_o",(char *) "dydt_out_o",(char *) "dydt", NULL 
+    (char *) "A",(char *) "b",(char *) "tol",(char *) "x", NULL 
   };
   PyObject *result = 0 ;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOO:pygsl_odeiv2_step_apply",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5,&obj6)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
+  
+  PyArrayObject * volatile _PyVector3 = NULL;
+  TYPE_VIEW_gsl_vector _vector3;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:gsl_splinalg_itersolve_iterate",kwnames,&obj1,&obj2,&obj3,&obj4)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_step_apply" "', argument " "1"" of type '" "pygsl_odeiv2_step *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "gsl_splinalg_itersolve_iterate" "', argument " "1"" of type '" "gsl_splinalg_itersolve *""'"); 
   }
-  arg1 = (pygsl_odeiv2_step *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_step_apply" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj2, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_odeiv2_step_apply" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  arg4 = obj3;
-  arg5 = obj4;
-  arg6 = obj5;
-  res7 = SWIG_ConvertPtr(obj6, &argp7,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
-  if (!SWIG_IsOK(res7)) {
-    SWIG_exception_fail(SWIG_ArgError(res7), "in method '" "pygsl_odeiv2_step_apply" "', argument " "7"" of type '" "pygsl_odeiv2_system *""'"); 
+  arg1 = (gsl_splinalg_itersolve *)(argp1);
+  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_spmatrix, 0 |  0 );
+  if (!SWIG_IsOK(res2)) {
+    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "gsl_splinalg_itersolve_iterate" "', argument " "2"" of type '" "pygsl_spmatrix const *""'"); 
   }
-  arg7 = (pygsl_odeiv2_system *)(argp7);
-  result = (PyObject *)pygsl_odeiv2_step_apply(arg1,arg2,arg3,arg4,arg5,arg6,arg7);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_pygsl_odeiv2_step) /* defines _wrap_delete_pygsl_odeiv2_step_destructor_closure */
-
-SWIGINTERN int Swig_var_step_rk2_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk2 is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk2_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
+  arg2 = (pygsl_spmatrix *)(argp2);
   
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk2), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rk4_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk4 is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk4_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk4), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rkf45_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rkf45 is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rkf45_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rkf45), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rkck_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rkck is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rkck_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rkck), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rk8pd_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk8pd is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk8pd_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk8pd), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rk2imp_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk2imp is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk2imp_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk2imp), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rk4imp_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk4imp is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk4imp_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk4imp), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_bsimp_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_bsimp is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_bsimp_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_bsimp), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_rk1imp_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_rk1imp is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_rk1imp_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_rk1imp), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_msadams_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_msadams is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_msadams_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_msadams), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_step_msbdf_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable step_msbdf is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_step_msbdf_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_odeiv2_step_msbdf), SWIGTYPE_p_gsl_odeiv2_step_type,  0 );
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_hadj_inc_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable hadj_inc is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_hadj_inc_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_From_int((int)(hadj_inc));
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_hadj_nil_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable hadj_nil is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_hadj_nil_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_From_int((int)(hadj_nil));
-  return pyobj;
-}
-
-
-SWIGINTERN int Swig_var_hadj_dec_set(PyObject *_val SWIGUNUSED) {
-  SWIG_Error(SWIG_AttributeError,"Variable hadj_dec is read-only.");
-  return 1;
-}
-
-
-SWIGINTERN PyObject *Swig_var_hadj_dec_get(void) {
-  PyObject *pyobj = 0;
-  PyObject *self = 0;
-  
-  (void)self;
-  pyobj = SWIG_From_int((int)(hadj_dec));
-  return pyobj;
-}
-
-
-SWIGINTERN int _wrap_new_pygsl_odeiv2_control(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  double arg1 ;
-  double arg2 ;
-  double arg3 ;
-  double arg4 ;
-  PyObject *arg5 = (PyObject *) 0 ;
-  double val1 ;
-  int ecode1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  double val4 ;
-  int ecode4 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  char *  kwnames[] = {
-    (char *) "eps_abs",(char *) "eps_rel",(char *) "a_y",(char *) "a_dydt",(char *) "scale_abs", NULL 
-  };
-  pygsl_odeiv2_control *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOO:new_pygsl_odeiv2_control",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5)) SWIG_fail;
-  ecode1 = SWIG_AsVal_double(obj1, &val1);
-  if (!SWIG_IsOK(ecode1)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode1), "in method '" "new_pygsl_odeiv2_control" "', argument " "1"" of type '" "double""'");
-  } 
-  arg1 = (double)(val1);
-  ecode2 = SWIG_AsVal_double(obj2, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "new_pygsl_odeiv2_control" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj3, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "new_pygsl_odeiv2_control" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  ecode4 = SWIG_AsVal_double(obj4, &val4);
-  if (!SWIG_IsOK(ecode4)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "new_pygsl_odeiv2_control" "', argument " "4"" of type '" "double""'");
-  } 
-  arg4 = (double)(val4);
-  arg5 = obj5;
-  result = (pygsl_odeiv2_control *)new_pygsl_odeiv2_control(arg1,arg2,arg3,arg4,arg5);
-  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_odeiv2_control, SWIG_BUILTIN_INIT |  0 );
-  return resultobj == Py_None ? -1 : 0;
-fail:
-  return -1;
-}
-
-
-SWIGINTERN PyObject *_wrap_delete_pygsl_odeiv2_control(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_control *arg1 = (pygsl_odeiv2_control *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  
-  if (!SWIG_Python_UnpackTuple(args,"delete_pygsl_odeiv2_control",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_control, SWIG_POINTER_DISOWN |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_pygsl_odeiv2_control" "', argument " "1"" of type '" "pygsl_odeiv2_control *""'"); 
+  {
+    PyGSL_array_index_t stride=0;
+    if(PyGSL_VECTOR_CONVERT(obj2, arg3, _PyVector3, _vector3,
+        PyGSL_INPUT_ARRAY, gsl_vector, 3, &stride) != GSL_SUCCESS){
+      goto fail;
+    }
   }
-  arg1 = (pygsl_odeiv2_control *)(argp1);
-  delete_pygsl_odeiv2_control(arg1);
-  resultobj = SWIG_Py_Void();
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_control_init(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_control *arg1 = (pygsl_odeiv2_control *) 0 ;
-  double arg2 ;
-  double arg3 ;
-  double arg4 ;
-  double arg5 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  double val4 ;
-  int ecode4 = 0 ;
-  double val5 ;
-  int ecode5 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  char *  kwnames[] = {
-    (char *) "eps_abs",(char *) "eps_rel",(char *) "a_y",(char *) "a_dydt", NULL 
-  };
-  gsl_error_flag_drop result;
   
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:pygsl_odeiv2_control_init",kwnames,&obj1,&obj2,&obj3,&obj4)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_control_init" "', argument " "1"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_control *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_control_init" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj2, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_odeiv2_control_init" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
   ecode4 = SWIG_AsVal_double(obj3, &val4);
   if (!SWIG_IsOK(ecode4)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "pygsl_odeiv2_control_init" "', argument " "4"" of type '" "double""'");
+    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "gsl_splinalg_itersolve_iterate" "', argument " "4"" of type '" "double""'");
   } 
   arg4 = (double)(val4);
-  ecode5 = SWIG_AsVal_double(obj4, &val5);
-  if (!SWIG_IsOK(ecode5)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "pygsl_odeiv2_control_init" "', argument " "5"" of type '" "double""'");
-  } 
-  arg5 = (double)(val5);
-  result = pygsl_odeiv2_control_init(arg1,arg2,arg3,arg4,arg5);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_control_name(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_control *arg1 = (pygsl_odeiv2_control *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  char *result = 0 ;
-  
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_control_name",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_control_name" "', argument " "1"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_control *)(argp1);
-  result = (char *)pygsl_odeiv2_control_name(arg1);
-  resultobj = SWIG_FromCharPtr((const char *)result);
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_control_hadjust(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_control *arg1 = (pygsl_odeiv2_control *) 0 ;
-  gsl_odeiv2_step *arg2 = (gsl_odeiv2_step *) 0 ;
-  PyObject *arg3 = (PyObject *) 0 ;
-  PyObject *arg4 = (PyObject *) 0 ;
-  PyObject *arg5 = (PyObject *) 0 ;
-  double arg6 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  void *argp2 = 0 ;
-  int res2 = 0 ;
-  double val6 ;
-  int ecode6 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  char *  kwnames[] = {
-    (char *) "s",(char *) "y_o",(char *) "yerr_o",(char *) "dydt_o",(char *) "h_in", NULL 
-  };
-  PyObject *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOO:pygsl_odeiv2_control_hadjust",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_control_hadjust" "', argument " "1"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_control *)(argp1);
-  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_gsl_odeiv2_step, 0 |  0 );
-  if (!SWIG_IsOK(res2)) {
-    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_odeiv2_control_hadjust" "', argument " "2"" of type '" "gsl_odeiv2_step *""'"); 
-  }
-  arg2 = (gsl_odeiv2_step *)(argp2);
-  arg3 = obj2;
-  arg4 = obj3;
   arg5 = obj4;
-  ecode6 = SWIG_AsVal_double(obj5, &val6);
-  if (!SWIG_IsOK(ecode6)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode6), "in method '" "pygsl_odeiv2_control_hadjust" "', argument " "6"" of type '" "double""'");
-  } 
-  arg6 = (double)(val6);
-  result = (PyObject *)pygsl_odeiv2_control_hadjust(arg1,arg2,arg3,arg4,arg5,arg6);
+  result = (PyObject *)gsl_splinalg_itersolve_t_iterate(arg1,(pygsl_spmatrix const *)arg2,(gsl_vector const *)arg3,arg4,arg5);
   resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_control_errlevel(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_control *arg1 = (pygsl_odeiv2_control *) 0 ;
-  double arg2 ;
-  double arg3 ;
-  double arg4 ;
-  size_t arg5 ;
-  double *arg6 = (double *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  double val4 ;
-  int ecode4 = 0 ;
-  size_t val5 ;
-  int ecode5 = 0 ;
-  void *argp6 = 0 ;
-  int res6 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  char *  kwnames[] = {
-    (char *) "y",(char *) "dydt",(char *) "h",(char *) "ind",(char *) "errlev", NULL 
-  };
-  gsl_error_flag_drop result;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOO:pygsl_odeiv2_control_errlevel",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "1"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_control *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj2, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  ecode4 = SWIG_AsVal_double(obj3, &val4);
-  if (!SWIG_IsOK(ecode4)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "4"" of type '" "double""'");
-  } 
-  arg4 = (double)(val4);
-  ecode5 = SWIG_AsVal_size_t(obj4, &val5);
-  if (!SWIG_IsOK(ecode5)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "5"" of type '" "size_t""'");
-  } 
-  arg5 = (size_t)(val5);
-  res6 = SWIG_ConvertPtr(obj5, &argp6,SWIGTYPE_p_double, 0 |  0 );
-  if (!SWIG_IsOK(res6)) {
-    SWIG_exception_fail(SWIG_ArgError(res6), "in method '" "pygsl_odeiv2_control_errlevel" "', argument " "6"" of type '" "double *""'"); 
-  }
-  arg6 = (double *)(argp6);
-  result = pygsl_odeiv2_control_errlevel(arg1,arg2,arg3,arg4,arg5,arg6);
   {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
+    Py_XDECREF(_PyVector3);
+    _PyVector3 = NULL;
+    FUNC_MESS_END();
   }
   return resultobj;
 fail:
+  {
+    Py_XDECREF(_PyVector3);
+    _PyVector3 = NULL;
+    FUNC_MESS_END();
+  }
   return NULL;
 }
 
 
-SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_pygsl_odeiv2_control) /* defines _wrap_delete_pygsl_odeiv2_control_destructor_closure */
-
-SWIGINTERN int _wrap_new_pygsl_odeiv2_evolve(PyObject *self, PyObject *args, PyObject *kwargs) {
+SWIGINTERN PyObject *_wrap_gsl_splinalg_itersolve_normr(PyObject *self, PyObject *args) {
   PyObject *resultobj = 0;
-  size_t arg1 ;
-  size_t val1 ;
-  int ecode1 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "dim", NULL 
-  };
-  pygsl_odeiv2_evolve *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:new_pygsl_odeiv2_evolve",kwnames,&obj1)) SWIG_fail;
-  ecode1 = SWIG_AsVal_size_t(obj1, &val1);
-  if (!SWIG_IsOK(ecode1)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode1), "in method '" "new_pygsl_odeiv2_evolve" "', argument " "1"" of type '" "size_t""'");
-  } 
-  arg1 = (size_t)(val1);
-  result = (pygsl_odeiv2_evolve *)new_pygsl_odeiv2_evolve(arg1);
-  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_odeiv2_evolve, SWIG_BUILTIN_INIT |  0 );
-  return resultobj == Py_None ? -1 : 0;
-fail:
-  return -1;
-}
-
-
-SWIGINTERN PyObject *_wrap_delete_pygsl_odeiv2_evolve(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_evolve *arg1 = (pygsl_odeiv2_evolve *) 0 ;
+  gsl_splinalg_itersolve *arg1 = (gsl_splinalg_itersolve *) 0 ;
   void *argp1 = 0 ;
   int res1 = 0 ;
   PyObject *swig_obj[1] ;
+  double result;
   
-  if (!SWIG_Python_UnpackTuple(args,"delete_pygsl_odeiv2_evolve",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_evolve, SWIG_POINTER_DISOWN |  0 );
+  if (!SWIG_Python_UnpackTuple(args,"gsl_splinalg_itersolve_normr",0,0,0)) SWIG_fail;
+  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_gsl_splinalg_itersolve, 0 |  0 );
   if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_pygsl_odeiv2_evolve" "', argument " "1"" of type '" "pygsl_odeiv2_evolve *""'"); 
+    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "gsl_splinalg_itersolve_normr" "', argument " "1"" of type '" "gsl_splinalg_itersolve *""'"); 
   }
-  arg1 = (pygsl_odeiv2_evolve *)(argp1);
-  delete_pygsl_odeiv2_evolve(arg1);
-  resultobj = SWIG_Py_Void();
+  arg1 = (gsl_splinalg_itersolve *)(argp1);
+  result = (double)gsl_splinalg_itersolve_t_normr(arg1);
+  resultobj = SWIG_From_double((double)(result));
   return resultobj;
 fail:
   return NULL;
 }
 
 
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_evolve_reset(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_evolve *arg1 = (pygsl_odeiv2_evolve *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  gsl_error_flag_drop result;
-  
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_evolve_reset",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_evolve, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_evolve_reset" "', argument " "1"" of type '" "pygsl_odeiv2_evolve *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_evolve *)(argp1);
-  result = pygsl_odeiv2_evolve_reset(arg1);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
+SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_gsl_splinalg_itersolve) /* defines _wrap_delete_gsl_splinalg_itersolve_destructor_closure */
+
+SWIGINTERN int Swig_var_gsl_splinalg_itersolve_gmres_set(PyObject *_val SWIGUNUSED) {
+  SWIG_Error(SWIG_AttributeError,"Variable gsl_splinalg_itersolve_gmres is read-only.");
+  return 1;
 }
 
 
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_evolve_get_yerr(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_evolve *arg1 = (pygsl_odeiv2_evolve *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  PyObject *result = 0 ;
+SWIGINTERN PyObject *Swig_var_gsl_splinalg_itersolve_gmres_get(void) {
+  PyObject *pyobj = 0;
+  PyObject *self = 0;
   
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_evolve_get_yerr",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_evolve, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_evolve_get_yerr" "', argument " "1"" of type '" "pygsl_odeiv2_evolve *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_evolve *)(argp1);
-  result = (PyObject *)pygsl_odeiv2_evolve_get_yerr(arg1);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
+  (void)self;
+  pyobj = SWIG_NewPointerObj(SWIG_as_voidptr(gsl_splinalg_itersolve_gmres), SWIGTYPE_p_gsl_splinalg_itersolve_type,  0 );
+  return pyobj;
 }
 
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_evolve_apply(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_evolve *arg1 = (pygsl_odeiv2_evolve *) 0 ;
-  pygsl_odeiv2_control *arg2 = (pygsl_odeiv2_control *) 0 ;
-  pygsl_odeiv2_step *arg3 = (pygsl_odeiv2_step *) 0 ;
-  pygsl_odeiv2_system *arg4 = (pygsl_odeiv2_system *) 0 ;
-  double arg5 ;
-  double arg6 ;
-  double arg7 ;
-  PyObject *arg8 = (PyObject *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  void *argp2 = 0 ;
-  int res2 = 0 ;
-  void *argp3 = 0 ;
-  int res3 = 0 ;
-  void *argp4 = 0 ;
-  int res4 = 0 ;
-  double val5 ;
-  int ecode5 = 0 ;
-  double val6 ;
-  int ecode6 = 0 ;
-  double val7 ;
-  int ecode7 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  PyObject * obj6 = 0 ;
-  PyObject * obj7 = 0 ;
-  char *  kwnames[] = {
-    (char *) "con",(char *) "step",(char *) "sys",(char *) "t_in",(char *) "t1",(char *) "h_in",(char *) "y_in_o", NULL 
-  };
-  PyObject *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOOO:pygsl_odeiv2_evolve_apply",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5,&obj6,&obj7)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_evolve, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "1"" of type '" "pygsl_odeiv2_evolve *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_evolve *)(argp1);
-  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res2)) {
-    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "2"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg2 = (pygsl_odeiv2_control *)(argp2);
-  res3 = SWIG_ConvertPtr(obj2, &argp3,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
-  if (!SWIG_IsOK(res3)) {
-    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "3"" of type '" "pygsl_odeiv2_step *""'"); 
-  }
-  arg3 = (pygsl_odeiv2_step *)(argp3);
-  res4 = SWIG_ConvertPtr(obj3, &argp4,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
-  if (!SWIG_IsOK(res4)) {
-    SWIG_exception_fail(SWIG_ArgError(res4), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "4"" of type '" "pygsl_odeiv2_system const *""'"); 
-  }
-  arg4 = (pygsl_odeiv2_system *)(argp4);
-  ecode5 = SWIG_AsVal_double(obj4, &val5);
-  if (!SWIG_IsOK(ecode5)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "5"" of type '" "double""'");
-  } 
-  arg5 = (double)(val5);
-  ecode6 = SWIG_AsVal_double(obj5, &val6);
-  if (!SWIG_IsOK(ecode6)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode6), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "6"" of type '" "double""'");
-  } 
-  arg6 = (double)(val6);
-  ecode7 = SWIG_AsVal_double(obj6, &val7);
-  if (!SWIG_IsOK(ecode7)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode7), "in method '" "pygsl_odeiv2_evolve_apply" "', argument " "7"" of type '" "double""'");
-  } 
-  arg7 = (double)(val7);
-  arg8 = obj7;
-  result = (PyObject *)pygsl_odeiv2_evolve_apply(arg1,arg2,arg3,(pygsl_odeiv2_system const *)arg4,arg5,arg6,arg7,arg8);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_evolve_apply_fixed_step(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_evolve *arg1 = (pygsl_odeiv2_evolve *) 0 ;
-  pygsl_odeiv2_control *arg2 = (pygsl_odeiv2_control *) 0 ;
-  pygsl_odeiv2_step *arg3 = (pygsl_odeiv2_step *) 0 ;
-  pygsl_odeiv2_system *arg4 = (pygsl_odeiv2_system *) 0 ;
-  double arg5 ;
-  double arg6 ;
-  PyObject *arg7 = (PyObject *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  void *argp2 = 0 ;
-  int res2 = 0 ;
-  void *argp3 = 0 ;
-  int res3 = 0 ;
-  void *argp4 = 0 ;
-  int res4 = 0 ;
-  double val5 ;
-  int ecode5 = 0 ;
-  double val6 ;
-  int ecode6 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  PyObject * obj6 = 0 ;
-  char *  kwnames[] = {
-    (char *) "con",(char *) "step",(char *) "sys",(char *) "t_in",(char *) "h0",(char *) "y_in_o", NULL 
-  };
-  PyObject *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOO:pygsl_odeiv2_evolve_apply_fixed_step",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5,&obj6)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_evolve, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "1"" of type '" "pygsl_odeiv2_evolve *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_evolve *)(argp1);
-  res2 = SWIG_ConvertPtr(obj1, &argp2,SWIGTYPE_p_pygsl_odeiv2_control, 0 |  0 );
-  if (!SWIG_IsOK(res2)) {
-    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "2"" of type '" "pygsl_odeiv2_control *""'"); 
-  }
-  arg2 = (pygsl_odeiv2_control *)(argp2);
-  res3 = SWIG_ConvertPtr(obj2, &argp3,SWIGTYPE_p_pygsl_odeiv2_step, 0 |  0 );
-  if (!SWIG_IsOK(res3)) {
-    SWIG_exception_fail(SWIG_ArgError(res3), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "3"" of type '" "pygsl_odeiv2_step *""'"); 
-  }
-  arg3 = (pygsl_odeiv2_step *)(argp3);
-  res4 = SWIG_ConvertPtr(obj3, &argp4,SWIGTYPE_p_pygsl_odeiv2_system, 0 |  0 );
-  if (!SWIG_IsOK(res4)) {
-    SWIG_exception_fail(SWIG_ArgError(res4), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "4"" of type '" "pygsl_odeiv2_system const *""'"); 
-  }
-  arg4 = (pygsl_odeiv2_system *)(argp4);
-  ecode5 = SWIG_AsVal_double(obj4, &val5);
-  if (!SWIG_IsOK(ecode5)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "5"" of type '" "double""'");
-  } 
-  arg5 = (double)(val5);
-  ecode6 = SWIG_AsVal_double(obj5, &val6);
-  if (!SWIG_IsOK(ecode6)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode6), "in method '" "pygsl_odeiv2_evolve_apply_fixed_step" "', argument " "6"" of type '" "double""'");
-  } 
-  arg6 = (double)(val6);
-  arg7 = obj6;
-  result = (PyObject *)pygsl_odeiv2_evolve_apply_fixed_step(arg1,arg2,arg3,(pygsl_odeiv2_system const *)arg4,arg5,arg6,arg7);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_pygsl_odeiv2_evolve) /* defines _wrap_delete_pygsl_odeiv2_evolve_destructor_closure */
-
-SWIGINTERN PyObject *_wrap_delete_pygsl_odeiv2_driver(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  
-  if (!SWIG_Python_UnpackTuple(args,"delete_pygsl_odeiv2_driver",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, SWIG_POINTER_DISOWN |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "delete_pygsl_odeiv2_driver" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  delete_pygsl_odeiv2_driver(arg1);
-  resultobj = SWIG_Py_Void();
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN int _wrap_new_pygsl_odeiv2_driver(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  PyObject *arg1 = (PyObject *) 0 ;
-  gsl_odeiv2_step_type *arg2 = (gsl_odeiv2_step_type *) 0 ;
-  double arg3 ;
-  double arg4 ;
-  double arg5 ;
-  double arg6 ;
-  double arg7 ;
-  PyObject *arg8 = (PyObject *) 0 ;
-  void *argp2 = 0 ;
-  int res2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  double val4 ;
-  int ecode4 = 0 ;
-  double val5 ;
-  int ecode5 = 0 ;
-  double val6 ;
-  int ecode6 = 0 ;
-  double val7 ;
-  int ecode7 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  PyObject * obj5 = 0 ;
-  PyObject * obj6 = 0 ;
-  PyObject * obj7 = 0 ;
-  PyObject * obj8 = 0 ;
-  char *  kwnames[] = {
-    (char *) "sys_o",(char *) "T",(char *) "hstart",(char *) "epsabs",(char *) "epsrel",(char *) "a_y",(char *) "a_dydt",(char *) "scale_abs_o", NULL 
-  };
-  pygsl_odeiv2_driver *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOOOOOO:new_pygsl_odeiv2_driver",kwnames,&obj1,&obj2,&obj3,&obj4,&obj5,&obj6,&obj7,&obj8)) SWIG_fail;
-  arg1 = obj1;
-  res2 = SWIG_ConvertPtr(obj2, &argp2,SWIGTYPE_p_gsl_odeiv2_step_type, 0 |  0 );
-  if (!SWIG_IsOK(res2)) {
-    SWIG_exception_fail(SWIG_ArgError(res2), "in method '" "new_pygsl_odeiv2_driver" "', argument " "2"" of type '" "gsl_odeiv2_step_type const *""'"); 
-  }
-  arg2 = (gsl_odeiv2_step_type *)(argp2);
-  ecode3 = SWIG_AsVal_double(obj3, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "new_pygsl_odeiv2_driver" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  ecode4 = SWIG_AsVal_double(obj4, &val4);
-  if (!SWIG_IsOK(ecode4)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "new_pygsl_odeiv2_driver" "', argument " "4"" of type '" "double""'");
-  } 
-  arg4 = (double)(val4);
-  ecode5 = SWIG_AsVal_double(obj5, &val5);
-  if (!SWIG_IsOK(ecode5)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode5), "in method '" "new_pygsl_odeiv2_driver" "', argument " "5"" of type '" "double""'");
-  } 
-  arg5 = (double)(val5);
-  ecode6 = SWIG_AsVal_double(obj6, &val6);
-  if (!SWIG_IsOK(ecode6)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode6), "in method '" "new_pygsl_odeiv2_driver" "', argument " "6"" of type '" "double""'");
-  } 
-  arg6 = (double)(val6);
-  ecode7 = SWIG_AsVal_double(obj7, &val7);
-  if (!SWIG_IsOK(ecode7)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode7), "in method '" "new_pygsl_odeiv2_driver" "', argument " "7"" of type '" "double""'");
-  } 
-  arg7 = (double)(val7);
-  arg8 = obj8;
-  result = (pygsl_odeiv2_driver *)new_pygsl_odeiv2_driver(arg1,(gsl_odeiv2_step_type const *)arg2,arg3,arg4,arg5,arg6,arg7,arg8);
-  resultobj = SWIG_NewPointerObj(SWIG_as_voidptr(result), SWIGTYPE_p_pygsl_odeiv2_driver, SWIG_BUILTIN_INIT |  0 );
-  return resultobj == Py_None ? -1 : 0;
-fail:
-  return -1;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_set_hmin(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  double arg2 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "h_min", NULL 
-  };
-  gsl_error_flag_drop result;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_odeiv2_driver_set_hmin",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_set_hmin" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_set_hmin" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  result = pygsl_odeiv2_driver_set_hmin(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_set_hmax(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  double arg2 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "h_max", NULL 
-  };
-  gsl_error_flag_drop result;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_odeiv2_driver_set_hmax",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_set_hmax" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_set_hmax" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  result = pygsl_odeiv2_driver_set_hmax(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_set_nmax(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  unsigned long arg2 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  unsigned long val2 ;
-  int ecode2 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "nmax", NULL 
-  };
-  gsl_error_flag_drop result;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_odeiv2_driver_set_nmax",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_set_nmax" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_unsigned_SS_long(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_set_nmax" "', argument " "2"" of type '" "unsigned long""'");
-  } 
-  arg2 = (unsigned long)(val2);
-  result = pygsl_odeiv2_driver_set_nmax(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_reset(PyObject *self, PyObject *args) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  PyObject *swig_obj[1] ;
-  gsl_error_flag_drop result;
-  
-  if (!SWIG_Python_UnpackTuple(args,"pygsl_odeiv2_driver_reset",0,0,0)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_reset" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  result = pygsl_odeiv2_driver_reset(arg1);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_reset_hstart(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  double arg2 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  PyObject * obj1 = 0 ;
-  char *  kwnames[] = {
-    (char *) "hstart", NULL 
-  };
-  gsl_error_flag_drop result;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"O:pygsl_odeiv2_driver_reset_hstart",kwnames,&obj1)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_reset_hstart" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_reset_hstart" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  result = pygsl_odeiv2_driver_reset_hstart(arg1,arg2);
-  {
-    DEBUG_MESS(5, "dropping error flag %ld", (long) result);
-    if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
-        __FUNCTION__, 81); 
-      goto fail;
-    }
-    Py_INCREF(Py_None);
-    resultobj = Py_None;
-  }
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_apply_fixed_step(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  double arg2 ;
-  double arg3 ;
-  unsigned long arg4 ;
-  PyObject *arg5 = (PyObject *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  unsigned long val4 ;
-  int ecode4 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  PyObject * obj4 = 0 ;
-  char *  kwnames[] = {
-    (char *) "tin",(char *) "h",(char *) "n",(char *) "y_o", NULL 
-  };
-  PyObject *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOOO:pygsl_odeiv2_driver_apply_fixed_step",kwnames,&obj1,&obj2,&obj3,&obj4)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_apply_fixed_step" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_apply_fixed_step" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj2, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_odeiv2_driver_apply_fixed_step" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  ecode4 = SWIG_AsVal_unsigned_SS_long(obj3, &val4);
-  if (!SWIG_IsOK(ecode4)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode4), "in method '" "pygsl_odeiv2_driver_apply_fixed_step" "', argument " "4"" of type '" "unsigned long""'");
-  } 
-  arg4 = (unsigned long)(val4);
-  arg5 = obj4;
-  result = (PyObject *)pygsl_odeiv2_driver_apply_fixed_step(arg1,arg2,arg3,arg4,arg5);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGINTERN PyObject *_wrap_pygsl_odeiv2_driver_apply(PyObject *self, PyObject *args, PyObject *kwargs) {
-  PyObject *resultobj = 0;
-  pygsl_odeiv2_driver *arg1 = (pygsl_odeiv2_driver *) 0 ;
-  double arg2 ;
-  double arg3 ;
-  PyObject *arg4 = (PyObject *) 0 ;
-  void *argp1 = 0 ;
-  int res1 = 0 ;
-  double val2 ;
-  int ecode2 = 0 ;
-  double val3 ;
-  int ecode3 = 0 ;
-  PyObject * obj1 = 0 ;
-  PyObject * obj2 = 0 ;
-  PyObject * obj3 = 0 ;
-  char *  kwnames[] = {
-    (char *) "tin",(char *) "t1",(char *) "y_o", NULL 
-  };
-  PyObject *result = 0 ;
-  
-  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOO:pygsl_odeiv2_driver_apply",kwnames,&obj1,&obj2,&obj3)) SWIG_fail;
-  res1 = SWIG_ConvertPtr(self, &argp1,SWIGTYPE_p_pygsl_odeiv2_driver, 0 |  0 );
-  if (!SWIG_IsOK(res1)) {
-    SWIG_exception_fail(SWIG_ArgError(res1), "in method '" "pygsl_odeiv2_driver_apply" "', argument " "1"" of type '" "pygsl_odeiv2_driver *""'"); 
-  }
-  arg1 = (pygsl_odeiv2_driver *)(argp1);
-  ecode2 = SWIG_AsVal_double(obj1, &val2);
-  if (!SWIG_IsOK(ecode2)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode2), "in method '" "pygsl_odeiv2_driver_apply" "', argument " "2"" of type '" "double""'");
-  } 
-  arg2 = (double)(val2);
-  ecode3 = SWIG_AsVal_double(obj2, &val3);
-  if (!SWIG_IsOK(ecode3)) {
-    SWIG_exception_fail(SWIG_ArgError(ecode3), "in method '" "pygsl_odeiv2_driver_apply" "', argument " "3"" of type '" "double""'");
-  } 
-  arg3 = (double)(val3);
-  arg4 = obj3;
-  result = (PyObject *)pygsl_odeiv2_driver_apply(arg1,arg2,arg3,arg4);
-  resultobj = result;
-  return resultobj;
-fail:
-  return NULL;
-}
-
-
-SWIGPY_DESTRUCTOR_CLOSURE(_wrap_delete_pygsl_odeiv2_driver) /* defines _wrap_delete_pygsl_odeiv2_driver_destructor_closure */
 
 static PyMethodDef SwigMethods[] = {
 	 { "SWIG_PyInstanceMethod_New", SWIG_PyInstanceMethod_New, METH_O, NULL},
+	 { "new_sparse_matrix", (PyCFunction)_wrap_new_sparse_matrix, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"new_sparse_matrix(size_t const n1, size_t const n2, unsigned long const nzmax, unsigned long const flags) -> pygsl_spmatrix\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"n1: size_t const\n"
+		"n2: size_t const\n"
+		"nzmax: unsigned long const\n"
+		"flags: unsigned long const\n"
+		"\n"
+		""},
+	 { "pygsl_spmatrix_alloc_helper", _wrap_pygsl_spmatrix_alloc_helper, METH_NOARGS, (char *)"pygsl_spmatrix_alloc_helper() -> pygsl_spmatrix"},
+	 { "pygsl_spmatrix_add", (PyCFunction)_wrap_pygsl_spmatrix_add, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"pygsl_spmatrix_add(pygsl_spmatrix c, pygsl_spmatrix a, pygsl_spmatrix b) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"c: pygsl_spmatrix *\n"
+		"a: pygsl_spmatrix const *\n"
+		"b: pygsl_spmatrix const *\n"
+		"\n"
+		""},
+	 { "pygsl_spmatrix_fscanf", (PyCFunction)_wrap_pygsl_spmatrix_fscanf, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"pygsl_spmatrix_fscanf(FILE * stream) -> pygsl_spmatrix\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"stream: FILE *\n"
+		"\n"
+		""},
+	 { "pygsl_spblas_dgemm", (PyCFunction)_wrap_pygsl_spblas_dgemm, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"pygsl_spblas_dgemm(double const alpha, pygsl_spmatrix A, pygsl_spmatrix B, pygsl_spmatrix C) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"alpha: double const\n"
+		"A: pygsl_spmatrix const *\n"
+		"B: pygsl_spmatrix const *\n"
+		"C: pygsl_spmatrix *\n"
+		"\n"
+		""},
+	 { "pygsl_spblas_dgemv", (PyCFunction)_wrap_pygsl_spblas_dgemv, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"pygsl_spblas_dgemv(int const TransA, double const alpha, pygsl_spmatrix A, gsl_vector const * x, double const beta, PyObject * y) -> PyObject *\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"TransA: int const\n"
+		"alpha: double const\n"
+		"A: pygsl_spmatrix const *\n"
+		"x: gsl_vector const *\n"
+		"beta: double const\n"
+		"y: PyObject *\n"
+		"\n"
+		""},
 	 { NULL, NULL, 0, NULL }
 };
 
-static SwigPyGetSet system___dict___getset = { SwigPyObject_get___dict__, 0 };
-SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_odeiv2_system_getset[] = {
-    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_odeiv2_system.__dict__", (void *) &system___dict___getset }
+static SwigPyGetSet pygsl_spmatrix___dict___getset = { SwigPyObject_get___dict__, 0 };
+static SwigPyGetSet pygsl_spmatrix_shape_getset = { _wrap_pygsl_spmatrix_shape_get, 0 };
+SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_spmatrix_getset[] = {
+    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_spmatrix.__dict__", (void *) &pygsl_spmatrix___dict___getset }
+,
+    { (char *) "shape", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_spmatrix.shape", (void *) &pygsl_spmatrix_shape_getset }
 ,
     {NULL, NULL, NULL, NULL, NULL} /* Sentinel */
 };
 
 SWIGINTERN PyObject *
-SwigPyBuiltin__pygsl_odeiv2_system_richcompare(PyObject *self, PyObject *other, int op) {
+SwigPyBuiltin__pygsl_spmatrix_richcompare(PyObject *self, PyObject *other, int op) {
   PyObject *result = NULL;
   if (!result) {
     if (SwigPyObject_Check(self) && SwigPyObject_Check(other)) {
@@ -6375,35 +6540,118 @@ SwigPyBuiltin__pygsl_odeiv2_system_richcompare(PyObject *self, PyObject *other, 
   return result;
 }
 
-SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_odeiv2_system_methods[] = {
-  { "set_func", (PyCFunction)_wrap_system_set_func, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_func(PyObject * cb) -> gsl_error_flag_drop\n"
+SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_spmatrix_methods[] = {
+  { "realloc", (PyCFunction)_wrap_pygsl_spmatrix_realloc, METH_VARARGS|METH_KEYWORDS, "\n"
+		"realloc(size_t const nzmax) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
 		"----------\n"
-		"cb: PyObject *\n"
+		"nzmax: size_t const\n"
 		"\n"
 		"" },
-  { "set_jacobian", (PyCFunction)_wrap_system_set_jacobian, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_jacobian(PyObject * cb) -> gsl_error_flag_drop\n"
+  { "get", (PyCFunction)_wrap_pygsl_spmatrix_get, METH_VARARGS|METH_KEYWORDS, "\n"
+		"get(size_t const i, size_t const j) -> double\n"
 		"\n"
 		"Parameters\n"
 		"----------\n"
-		"cb: PyObject *\n"
+		"i: size_t const\n"
+		"j: size_t const\n"
 		"\n"
 		"" },
-  { "set_dimension", (PyCFunction)_wrap_system_set_dimension, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_dimension(size_t dimension) -> gsl_error_flag_drop\n"
+  { "get_shape", (PyCFunction)_wrap_pygsl_spmatrix_get_shape, METH_VARARGS|METH_KEYWORDS, "get_shape() -> PyObject *" },
+  { "get_val_or_none", (PyCFunction)_wrap_pygsl_spmatrix_get_val_or_none, METH_VARARGS|METH_KEYWORDS, "\n"
+		"get_val_or_none(size_t const i, size_t const j) -> PyObject *\n"
 		"\n"
 		"Parameters\n"
 		"----------\n"
-		"dimension: size_t\n"
+		"i: size_t const\n"
+		"j: size_t const\n"
 		"\n"
 		"" },
+  { "set", (PyCFunction)_wrap_pygsl_spmatrix_set, METH_VARARGS|METH_KEYWORDS, "\n"
+		"set(size_t const i, size_t const j, double const x) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"i: size_t const\n"
+		"j: size_t const\n"
+		"x: double const\n"
+		"\n"
+		"" },
+  { "type_code", (PyCFunction)_wrap_pygsl_spmatrix_type_code, METH_VARARGS|METH_KEYWORDS, "type_code() -> int" },
+  { "set_from_triplet", (PyCFunction)_wrap_pygsl_spmatrix_set_from_triplet, METH_VARARGS|METH_KEYWORDS, "\n"
+		"set_from_triplet(PyObject * i_o, PyObject * d_o) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"i_o: PyObject *\n"
+		"d_o: PyObject *\n"
+		"\n"
+		"" },
+  { "set_zero", (PyCFunction)_wrap_pygsl_spmatrix_set_zero, METH_VARARGS|METH_KEYWORDS, "set_zero() -> gsl_error_flag_drop" },
+  { "fwrite", (PyCFunction)_wrap_pygsl_spmatrix_fwrite, METH_VARARGS|METH_KEYWORDS, "\n"
+		"fwrite(FILE * stream) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"stream: FILE *\n"
+		"\n"
+		"" },
+  { "fread", (PyCFunction)_wrap_pygsl_spmatrix_fread, METH_VARARGS|METH_KEYWORDS, "\n"
+		"fread(FILE * stream) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"stream: FILE *\n"
+		"\n"
+		"" },
+  { "fprintf", (PyCFunction)_wrap_pygsl_spmatrix_fprintf, METH_VARARGS|METH_KEYWORDS, "\n"
+		"fprintf(FILE * stream, char const * format) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"stream: FILE *\n"
+		"format: char const *\n"
+		"\n"
+		"" },
+  { "gsl_transpose_inplace", (PyCFunction)_wrap_pygsl_spmatrix_gsl_transpose_inplace, METH_VARARGS|METH_KEYWORDS, "gsl_transpose_inplace() -> gsl_error_flag_drop" },
+  { "gsl_transpose2_inplace", (PyCFunction)_wrap_pygsl_spmatrix_gsl_transpose2_inplace, METH_VARARGS|METH_KEYWORDS, "gsl_transpose2_inplace() -> gsl_error_flag_drop" },
+  { "transpose_inplace", (PyCFunction)_wrap_pygsl_spmatrix_transpose_inplace, METH_VARARGS|METH_KEYWORDS, "transpose_inplace() -> gsl_error_flag_drop" },
+  { "memcpy", (PyCFunction)_wrap_pygsl_spmatrix_memcpy, METH_VARARGS|METH_KEYWORDS, "memcpy() -> pygsl_spmatrix" },
+  { "transpose_memcpy", (PyCFunction)_wrap_pygsl_spmatrix_transpose_memcpy, METH_VARARGS|METH_KEYWORDS, "transpose_memcpy() -> pygsl_spmatrix" },
+  { "nnz", (PyCFunction)_wrap_pygsl_spmatrix_nnz, METH_VARARGS|METH_KEYWORDS, "nnz() -> size_t" },
+  { "equal", (PyCFunction)_wrap_pygsl_spmatrix_equal, METH_VARARGS|METH_KEYWORDS, "\n"
+		"equal(pygsl_spmatrix other) -> int\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"other: pygsl_spmatrix *\n"
+		"\n"
+		"" },
+  { "minmax", (PyCFunction)_wrap_pygsl_spmatrix_minmax, METH_VARARGS|METH_KEYWORDS, "minmax() -> gsl_error_flag_drop" },
+  { "scale", (PyCFunction)_wrap_pygsl_spmatrix_scale, METH_VARARGS|METH_KEYWORDS, "\n"
+		"scale(double const x) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"x: double const\n"
+		"\n"
+		"" },
+  { "ccs", (PyCFunction)_wrap_pygsl_spmatrix_ccs, METH_VARARGS|METH_KEYWORDS, "ccs() -> pygsl_spmatrix" },
+  { "crs", (PyCFunction)_wrap_pygsl_spmatrix_crs, METH_VARARGS|METH_KEYWORDS, "crs() -> pygsl_spmatrix" },
+  { "d2sp", (PyCFunction)_wrap_pygsl_spmatrix_d2sp, METH_VARARGS|METH_KEYWORDS, "\n"
+		"d2sp(gsl_matrix const * A) -> gsl_error_flag_drop\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"A: gsl_matrix const *\n"
+		"\n"
+		"" },
+  { "sp2d", (PyCFunction)_wrap_pygsl_spmatrix_sp2d, METH_VARARGS|METH_KEYWORDS, "sp2d() -> PyObject *" },
   { NULL, NULL, 0, NULL } /* Sentinel */
 };
 
-static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_system_type = {
+static PyHeapTypeObject SwigPyBuiltin__pygsl_spmatrix_type = {
   {
 #if PY_VERSION_HEX >= 0x03000000
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -6411,10 +6659,10 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_system_type = {
     PyObject_HEAD_INIT(NULL)
     0,                                        /* ob_size */
 #endif
-    "odeiv2.system",                          /* tp_name */
+    "sparse_wrapper.pygsl_spmatrix",          /* tp_name */
     sizeof(SwigPyObject),                     /* tp_basicsize */
     0,                                        /* tp_itemsize */
-    (destructor) (destructor) _wrap_delete_system_destructor_closure,/* tp_dealloc */
+    (destructor) (destructor) _wrap_delete_pygsl_spmatrix_destructor_closure,/* tp_dealloc */
     (printfunc) 0,                            /* tp_print */
     (getattrfunc) 0,                          /* tp_getattr */
     (setattrfunc) 0,                          /* tp_setattr */
@@ -6424,36 +6672,36 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_system_type = {
     (cmpfunc) 0,                              /* tp_compare */
 #endif
     (reprfunc) 0,                             /* tp_repr */
-    &SwigPyBuiltin__pygsl_odeiv2_system_type.as_number,           /* tp_as_number */
-    &SwigPyBuiltin__pygsl_odeiv2_system_type.as_sequence,         /* tp_as_sequence */
-    &SwigPyBuiltin__pygsl_odeiv2_system_type.as_mapping,          /* tp_as_mapping */
+    &SwigPyBuiltin__pygsl_spmatrix_type.as_number,                /* tp_as_number */
+    &SwigPyBuiltin__pygsl_spmatrix_type.as_sequence,              /* tp_as_sequence */
+    &SwigPyBuiltin__pygsl_spmatrix_type.as_mapping,               /* tp_as_mapping */
     (hashfunc) SwigPyObject_hash,             /* tp_hash */
     (ternaryfunc) 0,                          /* tp_call */
     (reprfunc) 0,                             /* tp_str */
     (getattrofunc) 0,                         /* tp_getattro */
     (setattrofunc) 0,                         /* tp_setattro */
-    &SwigPyBuiltin__pygsl_odeiv2_system_type.as_buffer,           /* tp_as_buffer */
+    &SwigPyBuiltin__pygsl_spmatrix_type.as_buffer,                /* tp_as_buffer */
 #if PY_VERSION_HEX >= 0x03000000
     Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE,   /* tp_flags */
 #else
     Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_CHECKTYPES, /* tp_flags */
 #endif
-    "::pygsl_odeiv2_system",                  /* tp_doc */
+    "::pygsl_spmatrix",                       /* tp_doc */
     (traverseproc) 0,                         /* tp_traverse */
     (inquiry) 0,                              /* tp_clear */
-    (richcmpfunc) SwigPyBuiltin__pygsl_odeiv2_system_richcompare, /* tp_richcompare */
+    (richcmpfunc) SwigPyBuiltin__pygsl_spmatrix_richcompare,      /* tp_richcompare */
     0,                                        /* tp_weaklistoffset */
     (getiterfunc) 0,                          /* tp_iter */
     (iternextfunc) 0,                         /* tp_iternext */
-    SwigPyBuiltin__pygsl_odeiv2_system_methods,                   /* tp_methods */
+    SwigPyBuiltin__pygsl_spmatrix_methods,    /* tp_methods */
     0,                                        /* tp_members */
-    SwigPyBuiltin__pygsl_odeiv2_system_getset,/* tp_getset */
+    SwigPyBuiltin__pygsl_spmatrix_getset,     /* tp_getset */
     0,                                        /* tp_base */
     0,                                        /* tp_dict */
     (descrgetfunc) 0,                         /* tp_descr_get */
     (descrsetfunc) 0,                         /* tp_descr_set */
     (Py_ssize_t) offsetof(SwigPyObject, dict),/* tp_dictoffset */
-    (initproc) _wrap_new_system,              /* tp_init */
+    (initproc) SwigPyBuiltin_BadInit,         /* tp_init */
     (allocfunc) 0,                            /* tp_alloc */
     (newfunc) 0,                              /* tp_new */
     (freefunc) 0,                             /* tp_free */
@@ -6591,17 +6839,20 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_system_type = {
 #endif
 };
 
-SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_odeiv2_system_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_system_type};
+SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_spmatrix_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_spmatrix_type};
 
-static SwigPyGetSet pygsl_odeiv2_step___dict___getset = { SwigPyObject_get___dict__, 0 };
-SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_odeiv2_step_getset[] = {
-    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_odeiv2_step.__dict__", (void *) &pygsl_odeiv2_step___dict___getset }
+static SwigPyGetSet gsl_splinalg_itersolve_name_getset = { _wrap_gsl_splinalg_itersolve_name_get, 0 };
+static SwigPyGetSet gsl_splinalg_itersolve___dict___getset = { SwigPyObject_get___dict__, 0 };
+SWIGINTERN PyGetSetDef SwigPyBuiltin__gsl_splinalg_itersolve_getset[] = {
+    { (char *) "name", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"gsl_splinalg_itersolve.name", (void *) &gsl_splinalg_itersolve_name_getset }
+,
+    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"gsl_splinalg_itersolve.__dict__", (void *) &gsl_splinalg_itersolve___dict___getset }
 ,
     {NULL, NULL, NULL, NULL, NULL} /* Sentinel */
 };
 
 SWIGINTERN PyObject *
-SwigPyBuiltin__pygsl_odeiv2_step_richcompare(PyObject *self, PyObject *other, int op) {
+SwigPyBuiltin__gsl_splinalg_itersolve_richcompare(PyObject *self, PyObject *other, int op) {
   PyObject *result = NULL;
   if (!result) {
     if (SwigPyObject_Check(self) && SwigPyObject_Check(other)) {
@@ -6614,27 +6865,24 @@ SwigPyBuiltin__pygsl_odeiv2_step_richcompare(PyObject *self, PyObject *other, in
   return result;
 }
 
-SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_odeiv2_step_methods[] = {
-  { "reset", (PyCFunction)_wrap_pygsl_odeiv2_step_reset, METH_VARARGS|METH_KEYWORDS, "reset() -> gsl_error_flag_drop" },
-  { "name", (PyCFunction)_wrap_pygsl_odeiv2_step_name, METH_VARARGS|METH_KEYWORDS, "name() -> char const *" },
-  { "order", (PyCFunction)_wrap_pygsl_odeiv2_step_order, METH_VARARGS|METH_KEYWORDS, "order() -> unsigned int" },
-  { "apply", (PyCFunction)_wrap_pygsl_odeiv2_step_apply, METH_VARARGS|METH_KEYWORDS, "\n"
-		"apply(double t, double h, PyObject * y_o, PyObject * dydt_in_o, PyObject * dydt_out_o, system dydt) -> PyObject *\n"
+SWIGINTERN PyMethodDef SwigPyBuiltin__gsl_splinalg_itersolve_methods[] = {
+  { "get_name", (PyCFunction)_wrap_gsl_splinalg_itersolve_get_name, METH_VARARGS|METH_KEYWORDS, "get_name() -> char const *" },
+  { "iterate", (PyCFunction)_wrap_gsl_splinalg_itersolve_iterate, METH_VARARGS|METH_KEYWORDS, "\n"
+		"iterate(pygsl_spmatrix A, gsl_vector const * b, double const tol, PyObject * x) -> PyObject *\n"
 		"\n"
 		"Parameters\n"
 		"----------\n"
-		"t: double\n"
-		"h: double\n"
-		"y_o: PyObject *\n"
-		"dydt_in_o: PyObject *\n"
-		"dydt_out_o: PyObject *\n"
-		"dydt: pygsl_odeiv2_system *\n"
+		"A: pygsl_spmatrix const *\n"
+		"b: gsl_vector const *\n"
+		"tol: double const\n"
+		"x: PyObject *\n"
 		"\n"
 		"" },
+  { "normr", (PyCFunction)_wrap_gsl_splinalg_itersolve_normr, METH_VARARGS|METH_KEYWORDS, "normr() -> double" },
   { NULL, NULL, 0, NULL } /* Sentinel */
 };
 
-static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_step_type = {
+static PyHeapTypeObject SwigPyBuiltin__gsl_splinalg_itersolve_type = {
   {
 #if PY_VERSION_HEX >= 0x03000000
     PyVarObject_HEAD_INIT(NULL, 0)
@@ -6642,10 +6890,10 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_step_type = {
     PyObject_HEAD_INIT(NULL)
     0,                                        /* ob_size */
 #endif
-    "odeiv2.pygsl_odeiv2_step",               /* tp_name */
+    "sparse_wrapper.gsl_splinalg_itersolve",  /* tp_name */
     sizeof(SwigPyObject),                     /* tp_basicsize */
     0,                                        /* tp_itemsize */
-    (destructor) (destructor) _wrap_delete_pygsl_odeiv2_step_destructor_closure,/* tp_dealloc */
+    (destructor) (destructor) _wrap_delete_gsl_splinalg_itersolve_destructor_closure,/* tp_dealloc */
     (printfunc) 0,                            /* tp_print */
     (getattrfunc) 0,                          /* tp_getattr */
     (setattrfunc) 0,                          /* tp_setattr */
@@ -6655,36 +6903,36 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_step_type = {
     (cmpfunc) 0,                              /* tp_compare */
 #endif
     (reprfunc) 0,                             /* tp_repr */
-    &SwigPyBuiltin__pygsl_odeiv2_step_type.as_number,             /* tp_as_number */
-    &SwigPyBuiltin__pygsl_odeiv2_step_type.as_sequence,           /* tp_as_sequence */
-    &SwigPyBuiltin__pygsl_odeiv2_step_type.as_mapping,            /* tp_as_mapping */
+    &SwigPyBuiltin__gsl_splinalg_itersolve_type.as_number,        /* tp_as_number */
+    &SwigPyBuiltin__gsl_splinalg_itersolve_type.as_sequence,      /* tp_as_sequence */
+    &SwigPyBuiltin__gsl_splinalg_itersolve_type.as_mapping,       /* tp_as_mapping */
     (hashfunc) SwigPyObject_hash,             /* tp_hash */
     (ternaryfunc) 0,                          /* tp_call */
     (reprfunc) 0,                             /* tp_str */
     (getattrofunc) 0,                         /* tp_getattro */
     (setattrofunc) 0,                         /* tp_setattro */
-    &SwigPyBuiltin__pygsl_odeiv2_step_type.as_buffer,             /* tp_as_buffer */
+    &SwigPyBuiltin__gsl_splinalg_itersolve_type.as_buffer,        /* tp_as_buffer */
 #if PY_VERSION_HEX >= 0x03000000
     Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE,   /* tp_flags */
 #else
     Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_CHECKTYPES, /* tp_flags */
 #endif
-    "::pygsl_odeiv2_step",                    /* tp_doc */
+    "::gsl_splinalg_itersolve",               /* tp_doc */
     (traverseproc) 0,                         /* tp_traverse */
     (inquiry) 0,                              /* tp_clear */
-    (richcmpfunc) SwigPyBuiltin__pygsl_odeiv2_step_richcompare,   /* tp_richcompare */
+    (richcmpfunc) SwigPyBuiltin__gsl_splinalg_itersolve_richcompare,/* tp_richcompare */
     0,                                        /* tp_weaklistoffset */
     (getiterfunc) 0,                          /* tp_iter */
     (iternextfunc) 0,                         /* tp_iternext */
-    SwigPyBuiltin__pygsl_odeiv2_step_methods, /* tp_methods */
+    SwigPyBuiltin__gsl_splinalg_itersolve_methods,                /* tp_methods */
     0,                                        /* tp_members */
-    SwigPyBuiltin__pygsl_odeiv2_step_getset,  /* tp_getset */
+    SwigPyBuiltin__gsl_splinalg_itersolve_getset,                 /* tp_getset */
     0,                                        /* tp_base */
     0,                                        /* tp_dict */
     (descrgetfunc) 0,                         /* tp_descr_get */
     (descrsetfunc) 0,                         /* tp_descr_set */
     (Py_ssize_t) offsetof(SwigPyObject, dict),/* tp_dictoffset */
-    (initproc) _wrap_new_pygsl_odeiv2_step,   /* tp_init */
+    (initproc) _wrap_new_gsl_splinalg_itersolve,                  /* tp_init */
     (allocfunc) 0,                            /* tp_alloc */
     (newfunc) 0,                              /* tp_new */
     (freefunc) 0,                             /* tp_free */
@@ -6822,824 +7070,56 @@ static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_step_type = {
 #endif
 };
 
-SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_odeiv2_step_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_step_type};
-
-static SwigPyGetSet pygsl_odeiv2_control___dict___getset = { SwigPyObject_get___dict__, 0 };
-SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_odeiv2_control_getset[] = {
-    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_odeiv2_control.__dict__", (void *) &pygsl_odeiv2_control___dict___getset }
-,
-    {NULL, NULL, NULL, NULL, NULL} /* Sentinel */
-};
-
-SWIGINTERN PyObject *
-SwigPyBuiltin__pygsl_odeiv2_control_richcompare(PyObject *self, PyObject *other, int op) {
-  PyObject *result = NULL;
-  if (!result) {
-    if (SwigPyObject_Check(self) && SwigPyObject_Check(other)) {
-      result = SwigPyObject_richcompare((SwigPyObject *)self, (SwigPyObject *)other, op);
-    } else {
-      result = Py_NotImplemented;
-      Py_INCREF(result);
-    }
-  }
-  return result;
-}
-
-SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_odeiv2_control_methods[] = {
-  { "init", (PyCFunction)_wrap_pygsl_odeiv2_control_init, METH_VARARGS|METH_KEYWORDS, "\n"
-		"init(double eps_abs, double eps_rel, double a_y, double a_dydt) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"eps_abs: double\n"
-		"eps_rel: double\n"
-		"a_y: double\n"
-		"a_dydt: double\n"
-		"\n"
-		"" },
-  { "name", (PyCFunction)_wrap_pygsl_odeiv2_control_name, METH_VARARGS|METH_KEYWORDS, "name() -> char const *" },
-  { "hadjust", (PyCFunction)_wrap_pygsl_odeiv2_control_hadjust, METH_VARARGS|METH_KEYWORDS, "\n"
-		"hadjust(gsl_odeiv2_step * s, PyObject * y_o, PyObject * yerr_o, PyObject * dydt_o, double h_in) -> PyObject *\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"s: gsl_odeiv2_step *\n"
-		"y_o: PyObject *\n"
-		"yerr_o: PyObject *\n"
-		"dydt_o: PyObject *\n"
-		"h_in: double\n"
-		"\n"
-		"" },
-  { "errlevel", (PyCFunction)_wrap_pygsl_odeiv2_control_errlevel, METH_VARARGS|METH_KEYWORDS, "\n"
-		"errlevel(double const y, double const dydt, double const h, size_t const ind, double * errlev) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"y: double const\n"
-		"dydt: double const\n"
-		"h: double const\n"
-		"ind: size_t const\n"
-		"errlev: double *\n"
-		"\n"
-		"" },
-  { NULL, NULL, 0, NULL } /* Sentinel */
-};
-
-static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_control_type = {
-  {
-#if PY_VERSION_HEX >= 0x03000000
-    PyVarObject_HEAD_INIT(NULL, 0)
-#else
-    PyObject_HEAD_INIT(NULL)
-    0,                                        /* ob_size */
-#endif
-    "odeiv2.pygsl_odeiv2_control",            /* tp_name */
-    sizeof(SwigPyObject),                     /* tp_basicsize */
-    0,                                        /* tp_itemsize */
-    (destructor) (destructor) _wrap_delete_pygsl_odeiv2_control_destructor_closure,/* tp_dealloc */
-    (printfunc) 0,                            /* tp_print */
-    (getattrfunc) 0,                          /* tp_getattr */
-    (setattrfunc) 0,                          /* tp_setattr */
-#if PY_VERSION_HEX >= 0x03000000
-    0,                                        /* tp_compare */
-#else
-    (cmpfunc) 0,                              /* tp_compare */
-#endif
-    (reprfunc) 0,                             /* tp_repr */
-    &SwigPyBuiltin__pygsl_odeiv2_control_type.as_number,          /* tp_as_number */
-    &SwigPyBuiltin__pygsl_odeiv2_control_type.as_sequence,        /* tp_as_sequence */
-    &SwigPyBuiltin__pygsl_odeiv2_control_type.as_mapping,         /* tp_as_mapping */
-    (hashfunc) SwigPyObject_hash,             /* tp_hash */
-    (ternaryfunc) 0,                          /* tp_call */
-    (reprfunc) 0,                             /* tp_str */
-    (getattrofunc) 0,                         /* tp_getattro */
-    (setattrofunc) 0,                         /* tp_setattro */
-    &SwigPyBuiltin__pygsl_odeiv2_control_type.as_buffer,          /* tp_as_buffer */
-#if PY_VERSION_HEX >= 0x03000000
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE,   /* tp_flags */
-#else
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_CHECKTYPES, /* tp_flags */
-#endif
-    "::pygsl_odeiv2_control",                 /* tp_doc */
-    (traverseproc) 0,                         /* tp_traverse */
-    (inquiry) 0,                              /* tp_clear */
-    (richcmpfunc) SwigPyBuiltin__pygsl_odeiv2_control_richcompare,/* tp_richcompare */
-    0,                                        /* tp_weaklistoffset */
-    (getiterfunc) 0,                          /* tp_iter */
-    (iternextfunc) 0,                         /* tp_iternext */
-    SwigPyBuiltin__pygsl_odeiv2_control_methods,                  /* tp_methods */
-    0,                                        /* tp_members */
-    SwigPyBuiltin__pygsl_odeiv2_control_getset,                   /* tp_getset */
-    0,                                        /* tp_base */
-    0,                                        /* tp_dict */
-    (descrgetfunc) 0,                         /* tp_descr_get */
-    (descrsetfunc) 0,                         /* tp_descr_set */
-    (Py_ssize_t) offsetof(SwigPyObject, dict),/* tp_dictoffset */
-    (initproc) _wrap_new_pygsl_odeiv2_control,/* tp_init */
-    (allocfunc) 0,                            /* tp_alloc */
-    (newfunc) 0,                              /* tp_new */
-    (freefunc) 0,                             /* tp_free */
-    (inquiry) 0,                              /* tp_is_gc */
-    (PyObject *) 0,                           /* tp_bases */
-    (PyObject *) 0,                           /* tp_mro */
-    (PyObject *) 0,                           /* tp_cache */
-    (PyObject *) 0,                           /* tp_subclasses */
-    (PyObject *) 0,                           /* tp_weaklist */
-    (destructor) 0,                           /* tp_del */
-#if PY_VERSION_HEX >= 0x02060000
-    (int) 0,                                  /* tp_version_tag */
-#endif
-#if PY_VERSION_HEX >= 0x03040000
-    (destructor) 0,                           /* tp_finalize */
-#endif
-#ifdef COUNT_ALLOCS
-    (Py_ssize_t) 0,                           /* tp_allocs */
-    (Py_ssize_t) 0,                           /* tp_frees */
-    (Py_ssize_t) 0,                           /* tp_maxalloc */
-#if PY_VERSION_HEX >= 0x02050000
-    0,                                        /* tp_prev */
-#endif
-    0,                                        /* tp_next */
-#endif
-  },
-#if PY_VERSION_HEX >= 0x03050000
-  {
-    (unaryfunc) 0,                            /* am_await */
-    (unaryfunc) 0,                            /* am_aiter */
-    (unaryfunc) 0,                            /* am_anext */
-  },
-#endif
-  {
-    (binaryfunc) 0,                           /* nb_add */
-    (binaryfunc) 0,                           /* nb_subtract */
-    (binaryfunc) 0,                           /* nb_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_remainder */
-    (binaryfunc) 0,                           /* nb_divmod */
-    (ternaryfunc) 0,                          /* nb_power */
-    (unaryfunc) 0,                            /* nb_negative */
-    (unaryfunc) 0,                            /* nb_positive */
-    (unaryfunc) 0,                            /* nb_absolute */
-    (inquiry) 0,                              /* nb_nonzero */
-    (unaryfunc) 0,                            /* nb_invert */
-    (binaryfunc) 0,                           /* nb_lshift */
-    (binaryfunc) 0,                           /* nb_rshift */
-    (binaryfunc) 0,                           /* nb_and */
-    (binaryfunc) 0,                           /* nb_xor */
-    (binaryfunc) 0,                           /* nb_or */
-#if PY_VERSION_HEX < 0x03000000
-    (coercion) 0,                             /* nb_coerce */
-#endif
-    (unaryfunc) 0,                            /* nb_int */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* nb_reserved */
-#else
-    (unaryfunc) 0,                            /* nb_long */
-#endif
-    (unaryfunc) 0,                            /* nb_float */
-#if PY_VERSION_HEX < 0x03000000
-    (unaryfunc) 0,                            /* nb_oct */
-    (unaryfunc) 0,                            /* nb_hex */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_add */
-    (binaryfunc) 0,                           /* nb_inplace_subtract */
-    (binaryfunc) 0,                           /* nb_inplace_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_inplace_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_remainder */
-    (ternaryfunc) 0,                          /* nb_inplace_power */
-    (binaryfunc) 0,                           /* nb_inplace_lshift */
-    (binaryfunc) 0,                           /* nb_inplace_rshift */
-    (binaryfunc) 0,                           /* nb_inplace_and */
-    (binaryfunc) 0,                           /* nb_inplace_xor */
-    (binaryfunc) 0,                           /* nb_inplace_or */
-    (binaryfunc) 0,                           /* nb_floor_divide */
-    (binaryfunc) 0,                           /* nb_true_divide */
-    (binaryfunc) 0,                           /* nb_inplace_floor_divide */
-    (binaryfunc) 0,                           /* nb_inplace_true_divide */
-#if PY_VERSION_HEX >= 0x02050000
-    (unaryfunc) 0,                            /* nb_index */
-#endif
-#if PY_VERSION_HEX >= 0x03050000
-    (binaryfunc) 0,                           /* nb_matrix_multiply */
-    (binaryfunc) 0,                           /* nb_inplace_matrix_multiply */
-#endif
-  },
-  {
-    (lenfunc) 0,                              /* mp_length */
-    (binaryfunc) 0,                           /* mp_subscript */
-    (objobjargproc) 0,                        /* mp_ass_subscript */
-  },
-  {
-    (lenfunc) 0,                              /* sq_length */
-    (binaryfunc) 0,                           /* sq_concat */
-    (ssizeargfunc) 0,                         /* sq_repeat */
-    (ssizeargfunc) 0,                         /* sq_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_slice */
-#else
-    (ssizessizeargfunc) 0,                    /* sq_slice */
-#endif
-    (ssizeobjargproc) 0,                      /* sq_ass_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_ass_slice */
-#else
-    (ssizessizeobjargproc) 0,                 /* sq_ass_slice */
-#endif
-    (objobjproc) 0,                           /* sq_contains */
-    (binaryfunc) 0,                           /* sq_inplace_concat */
-    (ssizeargfunc) 0,                         /* sq_inplace_repeat */
-  },
-  {
-#if PY_VERSION_HEX < 0x03000000
-    (readbufferproc) 0,                       /* bf_getreadbuffer */
-    (writebufferproc) 0,                      /* bf_getwritebuffer */
-    (segcountproc) 0,                         /* bf_getsegcount */
-    (charbufferproc) 0,                       /* bf_getcharbuffer */
-#endif
-#if PY_VERSION_HEX >= 0x02060000
-    (getbufferproc) 0,                        /* bf_getbuffer */
-    (releasebufferproc) 0,                    /* bf_releasebuffer */
-#endif
-  },
-    (PyObject *) 0,                           /* ht_name */
-    (PyObject *) 0,                           /* ht_slots */
-#if PY_VERSION_HEX >= 0x03030000
-    (PyObject *) 0,                           /* ht_qualname */
-    0,                                        /* ht_cached_keys */
-#endif
-};
-
-SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_odeiv2_control_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_control_type};
-
-static SwigPyGetSet pygsl_odeiv2_evolve___dict___getset = { SwigPyObject_get___dict__, 0 };
-SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_odeiv2_evolve_getset[] = {
-    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_odeiv2_evolve.__dict__", (void *) &pygsl_odeiv2_evolve___dict___getset }
-,
-    {NULL, NULL, NULL, NULL, NULL} /* Sentinel */
-};
-
-SWIGINTERN PyObject *
-SwigPyBuiltin__pygsl_odeiv2_evolve_richcompare(PyObject *self, PyObject *other, int op) {
-  PyObject *result = NULL;
-  if (!result) {
-    if (SwigPyObject_Check(self) && SwigPyObject_Check(other)) {
-      result = SwigPyObject_richcompare((SwigPyObject *)self, (SwigPyObject *)other, op);
-    } else {
-      result = Py_NotImplemented;
-      Py_INCREF(result);
-    }
-  }
-  return result;
-}
-
-SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_odeiv2_evolve_methods[] = {
-  { "reset", (PyCFunction)_wrap_pygsl_odeiv2_evolve_reset, METH_VARARGS|METH_KEYWORDS, "reset() -> gsl_error_flag_drop" },
-  { "get_yerr", (PyCFunction)_wrap_pygsl_odeiv2_evolve_get_yerr, METH_VARARGS|METH_KEYWORDS, "get_yerr() -> PyObject *" },
-  { "apply", (PyCFunction)_wrap_pygsl_odeiv2_evolve_apply, METH_VARARGS|METH_KEYWORDS, "\n"
-		"apply(pygsl_odeiv2_control con, pygsl_odeiv2_step step, system sys, double const t_in, double const t1, double const h_in, PyObject * y_in_o) -> PyObject *\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"con: pygsl_odeiv2_control *\n"
-		"step: pygsl_odeiv2_step *\n"
-		"sys: pygsl_odeiv2_system const *\n"
-		"t_in: double const\n"
-		"t1: double const\n"
-		"h_in: double const\n"
-		"y_in_o: PyObject *\n"
-		"\n"
-		"" },
-  { "apply_fixed_step", (PyCFunction)_wrap_pygsl_odeiv2_evolve_apply_fixed_step, METH_VARARGS|METH_KEYWORDS, "\n"
-		"apply_fixed_step(pygsl_odeiv2_control con, pygsl_odeiv2_step step, system sys, double const t_in, double const h0, PyObject * y_in_o) -> PyObject *\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"con: pygsl_odeiv2_control *\n"
-		"step: pygsl_odeiv2_step *\n"
-		"sys: pygsl_odeiv2_system const *\n"
-		"t_in: double const\n"
-		"h0: double const\n"
-		"y_in_o: PyObject *\n"
-		"\n"
-		"" },
-  { NULL, NULL, 0, NULL } /* Sentinel */
-};
-
-static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_evolve_type = {
-  {
-#if PY_VERSION_HEX >= 0x03000000
-    PyVarObject_HEAD_INIT(NULL, 0)
-#else
-    PyObject_HEAD_INIT(NULL)
-    0,                                        /* ob_size */
-#endif
-    "odeiv2.pygsl_odeiv2_evolve",             /* tp_name */
-    sizeof(SwigPyObject),                     /* tp_basicsize */
-    0,                                        /* tp_itemsize */
-    (destructor) (destructor) _wrap_delete_pygsl_odeiv2_evolve_destructor_closure,/* tp_dealloc */
-    (printfunc) 0,                            /* tp_print */
-    (getattrfunc) 0,                          /* tp_getattr */
-    (setattrfunc) 0,                          /* tp_setattr */
-#if PY_VERSION_HEX >= 0x03000000
-    0,                                        /* tp_compare */
-#else
-    (cmpfunc) 0,                              /* tp_compare */
-#endif
-    (reprfunc) 0,                             /* tp_repr */
-    &SwigPyBuiltin__pygsl_odeiv2_evolve_type.as_number,           /* tp_as_number */
-    &SwigPyBuiltin__pygsl_odeiv2_evolve_type.as_sequence,         /* tp_as_sequence */
-    &SwigPyBuiltin__pygsl_odeiv2_evolve_type.as_mapping,          /* tp_as_mapping */
-    (hashfunc) SwigPyObject_hash,             /* tp_hash */
-    (ternaryfunc) 0,                          /* tp_call */
-    (reprfunc) 0,                             /* tp_str */
-    (getattrofunc) 0,                         /* tp_getattro */
-    (setattrofunc) 0,                         /* tp_setattro */
-    &SwigPyBuiltin__pygsl_odeiv2_evolve_type.as_buffer,           /* tp_as_buffer */
-#if PY_VERSION_HEX >= 0x03000000
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE,   /* tp_flags */
-#else
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_CHECKTYPES, /* tp_flags */
-#endif
-    "::pygsl_odeiv2_evolve",                  /* tp_doc */
-    (traverseproc) 0,                         /* tp_traverse */
-    (inquiry) 0,                              /* tp_clear */
-    (richcmpfunc) SwigPyBuiltin__pygsl_odeiv2_evolve_richcompare, /* tp_richcompare */
-    0,                                        /* tp_weaklistoffset */
-    (getiterfunc) 0,                          /* tp_iter */
-    (iternextfunc) 0,                         /* tp_iternext */
-    SwigPyBuiltin__pygsl_odeiv2_evolve_methods,                   /* tp_methods */
-    0,                                        /* tp_members */
-    SwigPyBuiltin__pygsl_odeiv2_evolve_getset,/* tp_getset */
-    0,                                        /* tp_base */
-    0,                                        /* tp_dict */
-    (descrgetfunc) 0,                         /* tp_descr_get */
-    (descrsetfunc) 0,                         /* tp_descr_set */
-    (Py_ssize_t) offsetof(SwigPyObject, dict),/* tp_dictoffset */
-    (initproc) _wrap_new_pygsl_odeiv2_evolve, /* tp_init */
-    (allocfunc) 0,                            /* tp_alloc */
-    (newfunc) 0,                              /* tp_new */
-    (freefunc) 0,                             /* tp_free */
-    (inquiry) 0,                              /* tp_is_gc */
-    (PyObject *) 0,                           /* tp_bases */
-    (PyObject *) 0,                           /* tp_mro */
-    (PyObject *) 0,                           /* tp_cache */
-    (PyObject *) 0,                           /* tp_subclasses */
-    (PyObject *) 0,                           /* tp_weaklist */
-    (destructor) 0,                           /* tp_del */
-#if PY_VERSION_HEX >= 0x02060000
-    (int) 0,                                  /* tp_version_tag */
-#endif
-#if PY_VERSION_HEX >= 0x03040000
-    (destructor) 0,                           /* tp_finalize */
-#endif
-#ifdef COUNT_ALLOCS
-    (Py_ssize_t) 0,                           /* tp_allocs */
-    (Py_ssize_t) 0,                           /* tp_frees */
-    (Py_ssize_t) 0,                           /* tp_maxalloc */
-#if PY_VERSION_HEX >= 0x02050000
-    0,                                        /* tp_prev */
-#endif
-    0,                                        /* tp_next */
-#endif
-  },
-#if PY_VERSION_HEX >= 0x03050000
-  {
-    (unaryfunc) 0,                            /* am_await */
-    (unaryfunc) 0,                            /* am_aiter */
-    (unaryfunc) 0,                            /* am_anext */
-  },
-#endif
-  {
-    (binaryfunc) 0,                           /* nb_add */
-    (binaryfunc) 0,                           /* nb_subtract */
-    (binaryfunc) 0,                           /* nb_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_remainder */
-    (binaryfunc) 0,                           /* nb_divmod */
-    (ternaryfunc) 0,                          /* nb_power */
-    (unaryfunc) 0,                            /* nb_negative */
-    (unaryfunc) 0,                            /* nb_positive */
-    (unaryfunc) 0,                            /* nb_absolute */
-    (inquiry) 0,                              /* nb_nonzero */
-    (unaryfunc) 0,                            /* nb_invert */
-    (binaryfunc) 0,                           /* nb_lshift */
-    (binaryfunc) 0,                           /* nb_rshift */
-    (binaryfunc) 0,                           /* nb_and */
-    (binaryfunc) 0,                           /* nb_xor */
-    (binaryfunc) 0,                           /* nb_or */
-#if PY_VERSION_HEX < 0x03000000
-    (coercion) 0,                             /* nb_coerce */
-#endif
-    (unaryfunc) 0,                            /* nb_int */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* nb_reserved */
-#else
-    (unaryfunc) 0,                            /* nb_long */
-#endif
-    (unaryfunc) 0,                            /* nb_float */
-#if PY_VERSION_HEX < 0x03000000
-    (unaryfunc) 0,                            /* nb_oct */
-    (unaryfunc) 0,                            /* nb_hex */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_add */
-    (binaryfunc) 0,                           /* nb_inplace_subtract */
-    (binaryfunc) 0,                           /* nb_inplace_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_inplace_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_remainder */
-    (ternaryfunc) 0,                          /* nb_inplace_power */
-    (binaryfunc) 0,                           /* nb_inplace_lshift */
-    (binaryfunc) 0,                           /* nb_inplace_rshift */
-    (binaryfunc) 0,                           /* nb_inplace_and */
-    (binaryfunc) 0,                           /* nb_inplace_xor */
-    (binaryfunc) 0,                           /* nb_inplace_or */
-    (binaryfunc) 0,                           /* nb_floor_divide */
-    (binaryfunc) 0,                           /* nb_true_divide */
-    (binaryfunc) 0,                           /* nb_inplace_floor_divide */
-    (binaryfunc) 0,                           /* nb_inplace_true_divide */
-#if PY_VERSION_HEX >= 0x02050000
-    (unaryfunc) 0,                            /* nb_index */
-#endif
-#if PY_VERSION_HEX >= 0x03050000
-    (binaryfunc) 0,                           /* nb_matrix_multiply */
-    (binaryfunc) 0,                           /* nb_inplace_matrix_multiply */
-#endif
-  },
-  {
-    (lenfunc) 0,                              /* mp_length */
-    (binaryfunc) 0,                           /* mp_subscript */
-    (objobjargproc) 0,                        /* mp_ass_subscript */
-  },
-  {
-    (lenfunc) 0,                              /* sq_length */
-    (binaryfunc) 0,                           /* sq_concat */
-    (ssizeargfunc) 0,                         /* sq_repeat */
-    (ssizeargfunc) 0,                         /* sq_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_slice */
-#else
-    (ssizessizeargfunc) 0,                    /* sq_slice */
-#endif
-    (ssizeobjargproc) 0,                      /* sq_ass_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_ass_slice */
-#else
-    (ssizessizeobjargproc) 0,                 /* sq_ass_slice */
-#endif
-    (objobjproc) 0,                           /* sq_contains */
-    (binaryfunc) 0,                           /* sq_inplace_concat */
-    (ssizeargfunc) 0,                         /* sq_inplace_repeat */
-  },
-  {
-#if PY_VERSION_HEX < 0x03000000
-    (readbufferproc) 0,                       /* bf_getreadbuffer */
-    (writebufferproc) 0,                      /* bf_getwritebuffer */
-    (segcountproc) 0,                         /* bf_getsegcount */
-    (charbufferproc) 0,                       /* bf_getcharbuffer */
-#endif
-#if PY_VERSION_HEX >= 0x02060000
-    (getbufferproc) 0,                        /* bf_getbuffer */
-    (releasebufferproc) 0,                    /* bf_releasebuffer */
-#endif
-  },
-    (PyObject *) 0,                           /* ht_name */
-    (PyObject *) 0,                           /* ht_slots */
-#if PY_VERSION_HEX >= 0x03030000
-    (PyObject *) 0,                           /* ht_qualname */
-    0,                                        /* ht_cached_keys */
-#endif
-};
-
-SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_odeiv2_evolve_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_evolve_type};
-
-static SwigPyGetSet pygsl_odeiv2_driver___dict___getset = { SwigPyObject_get___dict__, 0 };
-SWIGINTERN PyGetSetDef SwigPyBuiltin__pygsl_odeiv2_driver_getset[] = {
-    { (char *) "__dict__", (getter) SwigPyBuiltin_FunpackGetterClosure, (setter) 0, (char *)"pygsl_odeiv2_driver.__dict__", (void *) &pygsl_odeiv2_driver___dict___getset }
-,
-    {NULL, NULL, NULL, NULL, NULL} /* Sentinel */
-};
-
-SWIGINTERN PyObject *
-SwigPyBuiltin__pygsl_odeiv2_driver_richcompare(PyObject *self, PyObject *other, int op) {
-  PyObject *result = NULL;
-  if (!result) {
-    if (SwigPyObject_Check(self) && SwigPyObject_Check(other)) {
-      result = SwigPyObject_richcompare((SwigPyObject *)self, (SwigPyObject *)other, op);
-    } else {
-      result = Py_NotImplemented;
-      Py_INCREF(result);
-    }
-  }
-  return result;
-}
-
-SWIGINTERN PyMethodDef SwigPyBuiltin__pygsl_odeiv2_driver_methods[] = {
-  { "set_hmin", (PyCFunction)_wrap_pygsl_odeiv2_driver_set_hmin, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_hmin(double const h_min) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"h_min: double const\n"
-		"\n"
-		"" },
-  { "set_hmax", (PyCFunction)_wrap_pygsl_odeiv2_driver_set_hmax, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_hmax(double const h_max) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"h_max: double const\n"
-		"\n"
-		"" },
-  { "set_nmax", (PyCFunction)_wrap_pygsl_odeiv2_driver_set_nmax, METH_VARARGS|METH_KEYWORDS, "\n"
-		"set_nmax(unsigned long const nmax) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"nmax: unsigned long const\n"
-		"\n"
-		"" },
-  { "reset", (PyCFunction)_wrap_pygsl_odeiv2_driver_reset, METH_VARARGS|METH_KEYWORDS, "reset() -> gsl_error_flag_drop" },
-  { "reset_hstart", (PyCFunction)_wrap_pygsl_odeiv2_driver_reset_hstart, METH_VARARGS|METH_KEYWORDS, "\n"
-		"reset_hstart(double const hstart) -> gsl_error_flag_drop\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"hstart: double const\n"
-		"\n"
-		"" },
-  { "apply_fixed_step", (PyCFunction)_wrap_pygsl_odeiv2_driver_apply_fixed_step, METH_VARARGS|METH_KEYWORDS, "\n"
-		"apply_fixed_step(double const tin, double const h, unsigned long const n, PyObject * y_o) -> PyObject *\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"tin: double const\n"
-		"h: double const\n"
-		"n: unsigned long const\n"
-		"y_o: PyObject *\n"
-		"\n"
-		"" },
-  { "apply", (PyCFunction)_wrap_pygsl_odeiv2_driver_apply, METH_VARARGS|METH_KEYWORDS, "\n"
-		"apply(double const tin, double const t1, PyObject * y_o) -> PyObject *\n"
-		"\n"
-		"Parameters\n"
-		"----------\n"
-		"tin: double const\n"
-		"t1: double const\n"
-		"y_o: PyObject *\n"
-		"\n"
-		"" },
-  { NULL, NULL, 0, NULL } /* Sentinel */
-};
-
-static PyHeapTypeObject SwigPyBuiltin__pygsl_odeiv2_driver_type = {
-  {
-#if PY_VERSION_HEX >= 0x03000000
-    PyVarObject_HEAD_INIT(NULL, 0)
-#else
-    PyObject_HEAD_INIT(NULL)
-    0,                                        /* ob_size */
-#endif
-    "odeiv2.pygsl_odeiv2_driver",             /* tp_name */
-    sizeof(SwigPyObject),                     /* tp_basicsize */
-    0,                                        /* tp_itemsize */
-    (destructor) (destructor) _wrap_delete_pygsl_odeiv2_driver_destructor_closure,/* tp_dealloc */
-    (printfunc) 0,                            /* tp_print */
-    (getattrfunc) 0,                          /* tp_getattr */
-    (setattrfunc) 0,                          /* tp_setattr */
-#if PY_VERSION_HEX >= 0x03000000
-    0,                                        /* tp_compare */
-#else
-    (cmpfunc) 0,                              /* tp_compare */
-#endif
-    (reprfunc) 0,                             /* tp_repr */
-    &SwigPyBuiltin__pygsl_odeiv2_driver_type.as_number,           /* tp_as_number */
-    &SwigPyBuiltin__pygsl_odeiv2_driver_type.as_sequence,         /* tp_as_sequence */
-    &SwigPyBuiltin__pygsl_odeiv2_driver_type.as_mapping,          /* tp_as_mapping */
-    (hashfunc) SwigPyObject_hash,             /* tp_hash */
-    (ternaryfunc) 0,                          /* tp_call */
-    (reprfunc) 0,                             /* tp_str */
-    (getattrofunc) 0,                         /* tp_getattro */
-    (setattrofunc) 0,                         /* tp_setattro */
-    &SwigPyBuiltin__pygsl_odeiv2_driver_type.as_buffer,           /* tp_as_buffer */
-#if PY_VERSION_HEX >= 0x03000000
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE,   /* tp_flags */
-#else
-    Py_TPFLAGS_DEFAULT|Py_TPFLAGS_BASETYPE|Py_TPFLAGS_CHECKTYPES, /* tp_flags */
-#endif
-    "::pygsl_odeiv2_driver",                  /* tp_doc */
-    (traverseproc) 0,                         /* tp_traverse */
-    (inquiry) 0,                              /* tp_clear */
-    (richcmpfunc) SwigPyBuiltin__pygsl_odeiv2_driver_richcompare, /* tp_richcompare */
-    0,                                        /* tp_weaklistoffset */
-    (getiterfunc) 0,                          /* tp_iter */
-    (iternextfunc) 0,                         /* tp_iternext */
-    SwigPyBuiltin__pygsl_odeiv2_driver_methods,                   /* tp_methods */
-    0,                                        /* tp_members */
-    SwigPyBuiltin__pygsl_odeiv2_driver_getset,/* tp_getset */
-    0,                                        /* tp_base */
-    0,                                        /* tp_dict */
-    (descrgetfunc) 0,                         /* tp_descr_get */
-    (descrsetfunc) 0,                         /* tp_descr_set */
-    (Py_ssize_t) offsetof(SwigPyObject, dict),/* tp_dictoffset */
-    (initproc) _wrap_new_pygsl_odeiv2_driver, /* tp_init */
-    (allocfunc) 0,                            /* tp_alloc */
-    (newfunc) 0,                              /* tp_new */
-    (freefunc) 0,                             /* tp_free */
-    (inquiry) 0,                              /* tp_is_gc */
-    (PyObject *) 0,                           /* tp_bases */
-    (PyObject *) 0,                           /* tp_mro */
-    (PyObject *) 0,                           /* tp_cache */
-    (PyObject *) 0,                           /* tp_subclasses */
-    (PyObject *) 0,                           /* tp_weaklist */
-    (destructor) 0,                           /* tp_del */
-#if PY_VERSION_HEX >= 0x02060000
-    (int) 0,                                  /* tp_version_tag */
-#endif
-#if PY_VERSION_HEX >= 0x03040000
-    (destructor) 0,                           /* tp_finalize */
-#endif
-#ifdef COUNT_ALLOCS
-    (Py_ssize_t) 0,                           /* tp_allocs */
-    (Py_ssize_t) 0,                           /* tp_frees */
-    (Py_ssize_t) 0,                           /* tp_maxalloc */
-#if PY_VERSION_HEX >= 0x02050000
-    0,                                        /* tp_prev */
-#endif
-    0,                                        /* tp_next */
-#endif
-  },
-#if PY_VERSION_HEX >= 0x03050000
-  {
-    (unaryfunc) 0,                            /* am_await */
-    (unaryfunc) 0,                            /* am_aiter */
-    (unaryfunc) 0,                            /* am_anext */
-  },
-#endif
-  {
-    (binaryfunc) 0,                           /* nb_add */
-    (binaryfunc) 0,                           /* nb_subtract */
-    (binaryfunc) 0,                           /* nb_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_remainder */
-    (binaryfunc) 0,                           /* nb_divmod */
-    (ternaryfunc) 0,                          /* nb_power */
-    (unaryfunc) 0,                            /* nb_negative */
-    (unaryfunc) 0,                            /* nb_positive */
-    (unaryfunc) 0,                            /* nb_absolute */
-    (inquiry) 0,                              /* nb_nonzero */
-    (unaryfunc) 0,                            /* nb_invert */
-    (binaryfunc) 0,                           /* nb_lshift */
-    (binaryfunc) 0,                           /* nb_rshift */
-    (binaryfunc) 0,                           /* nb_and */
-    (binaryfunc) 0,                           /* nb_xor */
-    (binaryfunc) 0,                           /* nb_or */
-#if PY_VERSION_HEX < 0x03000000
-    (coercion) 0,                             /* nb_coerce */
-#endif
-    (unaryfunc) 0,                            /* nb_int */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* nb_reserved */
-#else
-    (unaryfunc) 0,                            /* nb_long */
-#endif
-    (unaryfunc) 0,                            /* nb_float */
-#if PY_VERSION_HEX < 0x03000000
-    (unaryfunc) 0,                            /* nb_oct */
-    (unaryfunc) 0,                            /* nb_hex */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_add */
-    (binaryfunc) 0,                           /* nb_inplace_subtract */
-    (binaryfunc) 0,                           /* nb_inplace_multiply */
-#if PY_VERSION_HEX < 0x03000000
-    (binaryfunc) 0,                           /* nb_inplace_divide */
-#endif
-    (binaryfunc) 0,                           /* nb_inplace_remainder */
-    (ternaryfunc) 0,                          /* nb_inplace_power */
-    (binaryfunc) 0,                           /* nb_inplace_lshift */
-    (binaryfunc) 0,                           /* nb_inplace_rshift */
-    (binaryfunc) 0,                           /* nb_inplace_and */
-    (binaryfunc) 0,                           /* nb_inplace_xor */
-    (binaryfunc) 0,                           /* nb_inplace_or */
-    (binaryfunc) 0,                           /* nb_floor_divide */
-    (binaryfunc) 0,                           /* nb_true_divide */
-    (binaryfunc) 0,                           /* nb_inplace_floor_divide */
-    (binaryfunc) 0,                           /* nb_inplace_true_divide */
-#if PY_VERSION_HEX >= 0x02050000
-    (unaryfunc) 0,                            /* nb_index */
-#endif
-#if PY_VERSION_HEX >= 0x03050000
-    (binaryfunc) 0,                           /* nb_matrix_multiply */
-    (binaryfunc) 0,                           /* nb_inplace_matrix_multiply */
-#endif
-  },
-  {
-    (lenfunc) 0,                              /* mp_length */
-    (binaryfunc) 0,                           /* mp_subscript */
-    (objobjargproc) 0,                        /* mp_ass_subscript */
-  },
-  {
-    (lenfunc) 0,                              /* sq_length */
-    (binaryfunc) 0,                           /* sq_concat */
-    (ssizeargfunc) 0,                         /* sq_repeat */
-    (ssizeargfunc) 0,                         /* sq_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_slice */
-#else
-    (ssizessizeargfunc) 0,                    /* sq_slice */
-#endif
-    (ssizeobjargproc) 0,                      /* sq_ass_item */
-#if PY_VERSION_HEX >= 0x03000000
-    (void *) 0,                               /* was_sq_ass_slice */
-#else
-    (ssizessizeobjargproc) 0,                 /* sq_ass_slice */
-#endif
-    (objobjproc) 0,                           /* sq_contains */
-    (binaryfunc) 0,                           /* sq_inplace_concat */
-    (ssizeargfunc) 0,                         /* sq_inplace_repeat */
-  },
-  {
-#if PY_VERSION_HEX < 0x03000000
-    (readbufferproc) 0,                       /* bf_getreadbuffer */
-    (writebufferproc) 0,                      /* bf_getwritebuffer */
-    (segcountproc) 0,                         /* bf_getsegcount */
-    (charbufferproc) 0,                       /* bf_getcharbuffer */
-#endif
-#if PY_VERSION_HEX >= 0x02060000
-    (getbufferproc) 0,                        /* bf_getbuffer */
-    (releasebufferproc) 0,                    /* bf_releasebuffer */
-#endif
-  },
-    (PyObject *) 0,                           /* ht_name */
-    (PyObject *) 0,                           /* ht_slots */
-#if PY_VERSION_HEX >= 0x03030000
-    (PyObject *) 0,                           /* ht_qualname */
-    0,                                        /* ht_cached_keys */
-#endif
-};
-
-SWIGINTERN SwigPyClientData SwigPyBuiltin__pygsl_odeiv2_driver_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_driver_type};
+SWIGINTERN SwigPyClientData SwigPyBuiltin__gsl_splinalg_itersolve_clientdata = {0, 0, 0, 0, 0, 0, (PyTypeObject *)&SwigPyBuiltin__gsl_splinalg_itersolve_type};
 
 
 /* -------- TYPE CONVERSION AND EQUIVALENCE RULES (BEGIN) -------- */
 
+static swig_type_info _swigt__p_FILE = {"_p_FILE", "FILE *", 0, 0, (void*)0, 0};
 static swig_type_info _swigt__p_SwigPyObject = {"_p_SwigPyObject", "SwigPyObject *", 0, 0, (void*)0, 0};
 static swig_type_info _swigt__p_char = {"_p_char", "char *", 0, 0, (void*)0, 0};
 static swig_type_info _swigt__p_double = {"_p_double", "double *", 0, 0, (void*)0, 0};
-static swig_type_info _swigt__p_gsl_odeiv2_step = {"_p_gsl_odeiv2_step", "gsl_odeiv2_step *", 0, 0, (void*)0, 0};
-static swig_type_info _swigt__p_gsl_odeiv2_step_type = {"_p_gsl_odeiv2_step_type", "gsl_odeiv2_step_type *", 0, 0, (void*)0, 0};
-static swig_type_info _swigt__p_pygsl_odeiv2_control = {"_p_pygsl_odeiv2_control", "pygsl_odeiv2_control *", 0, 0, (void*)&SwigPyBuiltin__pygsl_odeiv2_control_clientdata, 0};
-static swig_type_info _swigt__p_pygsl_odeiv2_driver = {"_p_pygsl_odeiv2_driver", "pygsl_odeiv2_driver *", 0, 0, (void*)&SwigPyBuiltin__pygsl_odeiv2_driver_clientdata, 0};
-static swig_type_info _swigt__p_pygsl_odeiv2_evolve = {"_p_pygsl_odeiv2_evolve", "pygsl_odeiv2_evolve *", 0, 0, (void*)&SwigPyBuiltin__pygsl_odeiv2_evolve_clientdata, 0};
-static swig_type_info _swigt__p_pygsl_odeiv2_step = {"_p_pygsl_odeiv2_step", "pygsl_odeiv2_step *", 0, 0, (void*)&SwigPyBuiltin__pygsl_odeiv2_step_clientdata, 0};
-static swig_type_info _swigt__p_pygsl_odeiv2_system = {"_p_pygsl_odeiv2_system", "pygsl_odeiv2_system *", 0, 0, (void*)&SwigPyBuiltin__pygsl_odeiv2_system_clientdata, 0};
+static swig_type_info _swigt__p_gsl_matrix = {"_p_gsl_matrix", "gsl_matrix *", 0, 0, (void*)0, 0};
+static swig_type_info _swigt__p_gsl_splinalg_itersolve = {"_p_gsl_splinalg_itersolve", "gsl_splinalg_itersolve *", 0, 0, (void*)&SwigPyBuiltin__gsl_splinalg_itersolve_clientdata, 0};
+static swig_type_info _swigt__p_gsl_splinalg_itersolve_type = {"_p_gsl_splinalg_itersolve_type", "gsl_splinalg_itersolve_type *", 0, 0, (void*)0, 0};
+static swig_type_info _swigt__p_gsl_vector = {"_p_gsl_vector", "gsl_vector *", 0, 0, (void*)0, 0};
+static swig_type_info _swigt__p_pygsl_spmatrix = {"_p_pygsl_spmatrix", "pygsl_spmatrix *", 0, 0, (void*)&SwigPyBuiltin__pygsl_spmatrix_clientdata, 0};
 static swig_type_info _swigt__p_void = {"_p_void", "void *", 0, 0, (void*)0, 0};
 
 static swig_type_info *swig_type_initial[] = {
+  &_swigt__p_FILE,
   &_swigt__p_SwigPyObject,
   &_swigt__p_char,
   &_swigt__p_double,
-  &_swigt__p_gsl_odeiv2_step,
-  &_swigt__p_gsl_odeiv2_step_type,
-  &_swigt__p_pygsl_odeiv2_control,
-  &_swigt__p_pygsl_odeiv2_driver,
-  &_swigt__p_pygsl_odeiv2_evolve,
-  &_swigt__p_pygsl_odeiv2_step,
-  &_swigt__p_pygsl_odeiv2_system,
+  &_swigt__p_gsl_matrix,
+  &_swigt__p_gsl_splinalg_itersolve,
+  &_swigt__p_gsl_splinalg_itersolve_type,
+  &_swigt__p_gsl_vector,
+  &_swigt__p_pygsl_spmatrix,
   &_swigt__p_void,
 };
 
+static swig_cast_info _swigc__p_FILE[] = {  {&_swigt__p_FILE, 0, 0, 0},{0, 0, 0, 0}};
 static swig_cast_info _swigc__p_SwigPyObject[] = {  {&_swigt__p_SwigPyObject, 0, 0, 0},{0, 0, 0, 0}};
 static swig_cast_info _swigc__p_char[] = {  {&_swigt__p_char, 0, 0, 0},{0, 0, 0, 0}};
 static swig_cast_info _swigc__p_double[] = {  {&_swigt__p_double, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_gsl_odeiv2_step[] = {  {&_swigt__p_gsl_odeiv2_step, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_gsl_odeiv2_step_type[] = {  {&_swigt__p_gsl_odeiv2_step_type, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_pygsl_odeiv2_control[] = {  {&_swigt__p_pygsl_odeiv2_control, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_pygsl_odeiv2_driver[] = {  {&_swigt__p_pygsl_odeiv2_driver, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_pygsl_odeiv2_evolve[] = {  {&_swigt__p_pygsl_odeiv2_evolve, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_pygsl_odeiv2_step[] = {  {&_swigt__p_pygsl_odeiv2_step, 0, 0, 0},{0, 0, 0, 0}};
-static swig_cast_info _swigc__p_pygsl_odeiv2_system[] = {  {&_swigt__p_pygsl_odeiv2_system, 0, 0, 0},{0, 0, 0, 0}};
+static swig_cast_info _swigc__p_gsl_matrix[] = {  {&_swigt__p_gsl_matrix, 0, 0, 0},{0, 0, 0, 0}};
+static swig_cast_info _swigc__p_gsl_splinalg_itersolve[] = {  {&_swigt__p_gsl_splinalg_itersolve, 0, 0, 0},{0, 0, 0, 0}};
+static swig_cast_info _swigc__p_gsl_splinalg_itersolve_type[] = {  {&_swigt__p_gsl_splinalg_itersolve_type, 0, 0, 0},{0, 0, 0, 0}};
+static swig_cast_info _swigc__p_gsl_vector[] = {  {&_swigt__p_gsl_vector, 0, 0, 0},{0, 0, 0, 0}};
+static swig_cast_info _swigc__p_pygsl_spmatrix[] = {  {&_swigt__p_pygsl_spmatrix, 0, 0, 0},{0, 0, 0, 0}};
 static swig_cast_info _swigc__p_void[] = {  {&_swigt__p_void, 0, 0, 0},{0, 0, 0, 0}};
 
 static swig_cast_info *swig_cast_initial[] = {
+  _swigc__p_FILE,
   _swigc__p_SwigPyObject,
   _swigc__p_char,
   _swigc__p_double,
-  _swigc__p_gsl_odeiv2_step,
-  _swigc__p_gsl_odeiv2_step_type,
-  _swigc__p_pygsl_odeiv2_control,
-  _swigc__p_pygsl_odeiv2_driver,
-  _swigc__p_pygsl_odeiv2_evolve,
-  _swigc__p_pygsl_odeiv2_step,
-  _swigc__p_pygsl_odeiv2_system,
+  _swigc__p_gsl_matrix,
+  _swigc__p_gsl_splinalg_itersolve,
+  _swigc__p_gsl_splinalg_itersolve_type,
+  _swigc__p_gsl_vector,
+  _swigc__p_pygsl_spmatrix,
   _swigc__p_void,
 };
 
@@ -8335,103 +7815,25 @@ SWIG_init(void) {
   
   
   init_pygsl();
+  pygsl_sparse_matrix_module = m;
   
   
   pygsl_module_for_error_treatment = m;
   
-  
-  /* type '::pygsl_odeiv2_system' */
-  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_system_type;
-  builtin_pytype->tp_dict = d = PyDict_New();
-  SwigPyBuiltin_SetMetaType(builtin_pytype, metatype);
-  builtin_pytype->tp_new = PyType_GenericNew;
-  builtin_base_count = 0;
-  builtin_bases[builtin_base_count] = NULL;
-  SwigPyBuiltin_InitBases(builtin_pytype, builtin_bases);
-  PyDict_SetItemString(d, "this", this_descr);
-  PyDict_SetItemString(d, "thisown", thisown_descr);
-  if (PyType_Ready(builtin_pytype) < 0) {
-    PyErr_SetString(PyExc_TypeError, "Could not create type 'system'.");
-#if PY_VERSION_HEX >= 0x03000000
-    return NULL;
-#else
-    return;
-#endif
-  }
-  Py_INCREF(builtin_pytype);
-  PyModule_AddObject(m, "system", (PyObject *)builtin_pytype);
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "system");
-  d = md;
-  
-  /* type '::pygsl_odeiv2_step' */
-  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_step_type;
-  builtin_pytype->tp_dict = d = PyDict_New();
-  SwigPyBuiltin_SetMetaType(builtin_pytype, metatype);
-  builtin_pytype->tp_new = PyType_GenericNew;
-  builtin_base_count = 0;
-  builtin_bases[builtin_base_count] = NULL;
-  SwigPyBuiltin_InitBases(builtin_pytype, builtin_bases);
-  PyDict_SetItemString(d, "this", this_descr);
-  PyDict_SetItemString(d, "thisown", thisown_descr);
-  if (PyType_Ready(builtin_pytype) < 0) {
-    PyErr_SetString(PyExc_TypeError, "Could not create type 'pygsl_odeiv2_step'.");
-#if PY_VERSION_HEX >= 0x03000000
-    return NULL;
-#else
-    return;
-#endif
-  }
-  Py_INCREF(builtin_pytype);
-  PyModule_AddObject(m, "pygsl_odeiv2_step", (PyObject *)builtin_pytype);
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "pygsl_odeiv2_step");
-  d = md;
   PyDict_SetItemString(md,(char *)"cvar", SWIG_globals());
   SwigPyBuiltin_AddPublicSymbol(public_interface, "cvar");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk2",Swig_var_step_rk2_get, Swig_var_step_rk2_set);
-  PyDict_SetItemString(md, (char *)"step_rk2", PyObject_GetAttrString(SWIG_globals(), "step_rk2"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk2");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk4",Swig_var_step_rk4_get, Swig_var_step_rk4_set);
-  PyDict_SetItemString(md, (char *)"step_rk4", PyObject_GetAttrString(SWIG_globals(), "step_rk4"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk4");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rkf45",Swig_var_step_rkf45_get, Swig_var_step_rkf45_set);
-  PyDict_SetItemString(md, (char *)"step_rkf45", PyObject_GetAttrString(SWIG_globals(), "step_rkf45"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rkf45");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rkck",Swig_var_step_rkck_get, Swig_var_step_rkck_set);
-  PyDict_SetItemString(md, (char *)"step_rkck", PyObject_GetAttrString(SWIG_globals(), "step_rkck"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rkck");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk8pd",Swig_var_step_rk8pd_get, Swig_var_step_rk8pd_set);
-  PyDict_SetItemString(md, (char *)"step_rk8pd", PyObject_GetAttrString(SWIG_globals(), "step_rk8pd"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk8pd");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk2imp",Swig_var_step_rk2imp_get, Swig_var_step_rk2imp_set);
-  PyDict_SetItemString(md, (char *)"step_rk2imp", PyObject_GetAttrString(SWIG_globals(), "step_rk2imp"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk2imp");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk4imp",Swig_var_step_rk4imp_get, Swig_var_step_rk4imp_set);
-  PyDict_SetItemString(md, (char *)"step_rk4imp", PyObject_GetAttrString(SWIG_globals(), "step_rk4imp"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk4imp");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_bsimp",Swig_var_step_bsimp_get, Swig_var_step_bsimp_set);
-  PyDict_SetItemString(md, (char *)"step_bsimp", PyObject_GetAttrString(SWIG_globals(), "step_bsimp"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_bsimp");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_rk1imp",Swig_var_step_rk1imp_get, Swig_var_step_rk1imp_set);
-  PyDict_SetItemString(md, (char *)"step_rk1imp", PyObject_GetAttrString(SWIG_globals(), "step_rk1imp"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_rk1imp");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_msadams",Swig_var_step_msadams_get, Swig_var_step_msadams_set);
-  PyDict_SetItemString(md, (char *)"step_msadams", PyObject_GetAttrString(SWIG_globals(), "step_msadams"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_msadams");
-  SWIG_addvarlink(SWIG_globals(),(char *)"step_msbdf",Swig_var_step_msbdf_get, Swig_var_step_msbdf_set);
-  PyDict_SetItemString(md, (char *)"step_msbdf", PyObject_GetAttrString(SWIG_globals(), "step_msbdf"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "step_msbdf");
-  SWIG_addvarlink(SWIG_globals(),(char *)"hadj_inc",Swig_var_hadj_inc_get, Swig_var_hadj_inc_set);
-  PyDict_SetItemString(md, (char *)"hadj_inc", PyObject_GetAttrString(SWIG_globals(), "hadj_inc"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "hadj_inc");
-  SWIG_addvarlink(SWIG_globals(),(char *)"hadj_nil",Swig_var_hadj_nil_get, Swig_var_hadj_nil_set);
-  PyDict_SetItemString(md, (char *)"hadj_nil", PyObject_GetAttrString(SWIG_globals(), "hadj_nil"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "hadj_nil");
-  SWIG_addvarlink(SWIG_globals(),(char *)"hadj_dec",Swig_var_hadj_dec_get, Swig_var_hadj_dec_set);
-  PyDict_SetItemString(md, (char *)"hadj_dec", PyObject_GetAttrString(SWIG_globals(), "hadj_dec"));
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "hadj_dec");
+  SWIG_addvarlink(SWIG_globals(),(char *)"TRIPLET",Swig_var_TRIPLET_get, Swig_var_TRIPLET_set);
+  PyDict_SetItemString(md, (char *)"TRIPLET", PyObject_GetAttrString(SWIG_globals(), "TRIPLET"));
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "TRIPLET");
+  SWIG_addvarlink(SWIG_globals(),(char *)"CCS",Swig_var_CCS_get, Swig_var_CCS_set);
+  PyDict_SetItemString(md, (char *)"CCS", PyObject_GetAttrString(SWIG_globals(), "CCS"));
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "CCS");
+  SWIG_addvarlink(SWIG_globals(),(char *)"CRS",Swig_var_CRS_get, Swig_var_CRS_set);
+  PyDict_SetItemString(md, (char *)"CRS", PyObject_GetAttrString(SWIG_globals(), "CRS"));
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "CRS");
   
-  /* type '::pygsl_odeiv2_control' */
-  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_control_type;
+  /* type '::pygsl_spmatrix' */
+  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_spmatrix_type;
   builtin_pytype->tp_dict = d = PyDict_New();
   SwigPyBuiltin_SetMetaType(builtin_pytype, metatype);
   builtin_pytype->tp_new = PyType_GenericNew;
@@ -8441,7 +7843,7 @@ SWIG_init(void) {
   PyDict_SetItemString(d, "this", this_descr);
   PyDict_SetItemString(d, "thisown", thisown_descr);
   if (PyType_Ready(builtin_pytype) < 0) {
-    PyErr_SetString(PyExc_TypeError, "Could not create type 'pygsl_odeiv2_control'.");
+    PyErr_SetString(PyExc_TypeError, "Could not create type 'pygsl_spmatrix'.");
 #if PY_VERSION_HEX >= 0x03000000
     return NULL;
 #else
@@ -8449,12 +7851,12 @@ SWIG_init(void) {
 #endif
   }
   Py_INCREF(builtin_pytype);
-  PyModule_AddObject(m, "pygsl_odeiv2_control", (PyObject *)builtin_pytype);
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "pygsl_odeiv2_control");
+  PyModule_AddObject(m, "pygsl_spmatrix", (PyObject *)builtin_pytype);
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "pygsl_spmatrix");
   d = md;
   
-  /* type '::pygsl_odeiv2_evolve' */
-  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_evolve_type;
+  /* type '::gsl_splinalg_itersolve' */
+  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__gsl_splinalg_itersolve_type;
   builtin_pytype->tp_dict = d = PyDict_New();
   SwigPyBuiltin_SetMetaType(builtin_pytype, metatype);
   builtin_pytype->tp_new = PyType_GenericNew;
@@ -8464,7 +7866,7 @@ SWIG_init(void) {
   PyDict_SetItemString(d, "this", this_descr);
   PyDict_SetItemString(d, "thisown", thisown_descr);
   if (PyType_Ready(builtin_pytype) < 0) {
-    PyErr_SetString(PyExc_TypeError, "Could not create type 'pygsl_odeiv2_evolve'.");
+    PyErr_SetString(PyExc_TypeError, "Could not create type 'gsl_splinalg_itersolve'.");
 #if PY_VERSION_HEX >= 0x03000000
     return NULL;
 #else
@@ -8472,32 +7874,12 @@ SWIG_init(void) {
 #endif
   }
   Py_INCREF(builtin_pytype);
-  PyModule_AddObject(m, "pygsl_odeiv2_evolve", (PyObject *)builtin_pytype);
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "pygsl_odeiv2_evolve");
+  PyModule_AddObject(m, "gsl_splinalg_itersolve", (PyObject *)builtin_pytype);
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "gsl_splinalg_itersolve");
   d = md;
-  
-  /* type '::pygsl_odeiv2_driver' */
-  builtin_pytype = (PyTypeObject *)&SwigPyBuiltin__pygsl_odeiv2_driver_type;
-  builtin_pytype->tp_dict = d = PyDict_New();
-  SwigPyBuiltin_SetMetaType(builtin_pytype, metatype);
-  builtin_pytype->tp_new = PyType_GenericNew;
-  builtin_base_count = 0;
-  builtin_bases[builtin_base_count] = NULL;
-  SwigPyBuiltin_InitBases(builtin_pytype, builtin_bases);
-  PyDict_SetItemString(d, "this", this_descr);
-  PyDict_SetItemString(d, "thisown", thisown_descr);
-  if (PyType_Ready(builtin_pytype) < 0) {
-    PyErr_SetString(PyExc_TypeError, "Could not create type 'pygsl_odeiv2_driver'.");
-#if PY_VERSION_HEX >= 0x03000000
-    return NULL;
-#else
-    return;
-#endif
-  }
-  Py_INCREF(builtin_pytype);
-  PyModule_AddObject(m, "pygsl_odeiv2_driver", (PyObject *)builtin_pytype);
-  SwigPyBuiltin_AddPublicSymbol(public_interface, "pygsl_odeiv2_driver");
-  d = md;
+  SWIG_addvarlink(SWIG_globals(),(char *)"gsl_splinalg_itersolve_gmres",Swig_var_gsl_splinalg_itersolve_gmres_get, Swig_var_gsl_splinalg_itersolve_gmres_set);
+  PyDict_SetItemString(md, (char *)"gsl_splinalg_itersolve_gmres", PyObject_GetAttrString(SWIG_globals(), "gsl_splinalg_itersolve_gmres"));
+  SwigPyBuiltin_AddPublicSymbol(public_interface, "gsl_splinalg_itersolve_gmres");
 #if PY_VERSION_HEX >= 0x03000000
   return m;
 #else

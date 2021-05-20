@@ -1608,6 +1608,14 @@ SwigPyObject_repr(SwigPyObject *v, PyObject *args)
   return repr;  
 }
 
+/* We need a version taking two PyObject* parameters so it's a valid
+ * PyCFunction to use in swigobject_methods[]. */
+SWIGRUNTIME PyObject *
+SwigPyObject_repr2(PyObject *v, PyObject *SWIGUNUSEDPARM(args))
+{
+  return SwigPyObject_repr((SwigPyObject*)v);
+}
+
 SWIGRUNTIME int
 SwigPyObject_compare(SwigPyObject *v, SwigPyObject *w)
 {
@@ -1737,11 +1745,7 @@ SwigPyObject_append(PyObject* v, PyObject* next)
 }
 
 SWIGRUNTIME PyObject* 
-#ifdef METH_NOARGS
-SwigPyObject_next(PyObject* v)
-#else
 SwigPyObject_next(PyObject* v, PyObject *SWIGUNUSEDPARM(args))
-#endif
 {
   SwigPyObject *sobj = (SwigPyObject *) v;
   if (sobj->next) {    
@@ -1775,6 +1779,20 @@ SwigPyObject_acquire(PyObject* v, PyObject *SWIGUNUSEDPARM(args))
   sobj->own = SWIG_POINTER_OWN;
   return SWIG_Py_Void();
 }
+
+#ifdef METH_NOARGS
+static PyObject*
+SwigPyObject_disown2(PyObject* v, PyObject *SWIGUNUSEDPARM(args))
+{
+  return SwigPyObject_disown(v);
+}
+
+static PyObject*
+SwigPyObject_acquire2(PyObject* v, PyObject *SWIGUNUSEDPARM(args))
+{
+  return SwigPyObject_acquire(v);
+}
+#endif
 
 SWIGINTERN PyObject*
 SwigPyObject_own(PyObject *v, PyObject *args)
@@ -1816,12 +1834,12 @@ SwigPyObject_own(PyObject *v, PyObject *args)
 #ifdef METH_O
 static PyMethodDef
 swigobject_methods[] = {
-  {(char *)"disown",  (PyCFunction)SwigPyObject_disown,  METH_NOARGS,  (char *)"releases ownership of the pointer"},
-  {(char *)"acquire", (PyCFunction)SwigPyObject_acquire, METH_NOARGS,  (char *)"acquires ownership of the pointer"},
+  {(char *)"disown",  (PyCFunction)SwigPyObject_disown2, METH_NOARGS,  (char *)"releases ownership of the pointer"},
+  {(char *)"acquire", (PyCFunction)SwigPyObject_acquire2,METH_NOARGS,  (char *)"acquires ownership of the pointer"},
   {(char *)"own",     (PyCFunction)SwigPyObject_own,     METH_VARARGS, (char *)"returns/sets ownership of the pointer"},
   {(char *)"append",  (PyCFunction)SwigPyObject_append,  METH_O,       (char *)"appends another 'this' object"},
   {(char *)"next",    (PyCFunction)SwigPyObject_next,    METH_NOARGS,  (char *)"returns the next 'this' object"},
-  {(char *)"__repr__",(PyCFunction)SwigPyObject_repr,    METH_NOARGS,  (char *)"returns object representation"},
+  {(char *)"__repr__",(PyCFunction)SwigPyObject_repr2,   METH_NOARGS,  (char *)"returns object representation"},
   {0, 0, 0, 0}  
 };
 #else
@@ -1832,7 +1850,7 @@ swigobject_methods[] = {
   {(char *)"own",     (PyCFunction)SwigPyObject_own,     METH_VARARGS,  (char *)"returns/sets ownership of the pointer"},
   {(char *)"append",  (PyCFunction)SwigPyObject_append,  METH_VARARGS,  (char *)"appends another 'this' object"},
   {(char *)"next",    (PyCFunction)SwigPyObject_next,    METH_VARARGS,  (char *)"returns the next 'this' object"},
-  {(char *)"__repr__",(PyCFunction)SwigPyObject_repr,   METH_VARARGS,  (char *)"returns object representation"},
+  {(char *)"__repr__",(PyCFunction)SwigPyObject_repr,    METH_VARARGS,  (char *)"returns object representation"},
   {0, 0, 0, 0}  
 };
 #endif
@@ -3064,13 +3082,9 @@ static swig_module_info swig_module = {swig_types, 49, 0, 0, 0, 0};
 #include <gsl/gsl_types.h>
 #include <stdio.h>
 #include <pygsl/error_helpers.h>
+#include <pygsl/pygsl_features.h>
 
 static PyObject *module = NULL;
-
-static const char _pygsl_gsl_unimpl_feature[] =  "Feature not implemented in your version of GSL";
-#define _PyGSL_ERROR_UNIMPL pygsl_error(_pygsl_gsl_unimpl_feature, __FILE__, __LINE__, GSL_EUNIMPL)
-#define PyGSL_ERROR_UNIMPL      do{_PyGSL_ERROR_UNIMPL; PyGSL_ERROR_FLAG(GSL_EUNIMPL); return GSL_EUNIMPL; }while(0);
-#define PyGSL_ERROR_UNIMPL_NULL do{_PyGSL_ERROR_UNIMPL; PyGSL_ERROR_FLAG(GSL_EUNIMPL); return GSL_EUNIMPL; }while(0);
 
    
 #include <stddef.h>
@@ -3929,16 +3943,20 @@ SWIG_From_float  (float value)
 #include <gsl/gsl_eigen.h>
 
 
+#ifdef _PYGSL_GSL_HAS_GSL_EIGEN_NONSYMM_PARAMS
   static int
   pygsl_eigen_nonsymm_params (const int t, const int balance, gsl_eigen_nonsymm_workspace * self)
-  {
-#ifdef _PYGSL_GSL_HAS_GSL_EIGEN_NONSYMM_PARAMS
-  gsl_eigen_nonsymm_params (t, balance, self);
-  return GSL_SUCCESS;
+  {    
+      
+      gsl_eigen_nonsymm_params (t, balance, self);
+      return GSL_SUCCESS;
+    }
 #else
+  static int
+    pygsl_eigen_nonsymm_params (const int t, const int balance, void * self) {
 	 PyGSL_ERROR_UNIMPL
-#endif 
-	   }
+    }
+#endif 	   
 
 SWIGINTERN gsl_eigen_symm_workspace *new_gsl_eigen_symm_workspace(size_t const n){
     return gsl_eigen_symm_alloc(n);
@@ -4208,7 +4226,7 @@ SWIGINTERN struct pygsl_spline *new_pygsl_spline(gsl_interp_type const *T,size_t
 	  if(self->spline == NULL){
 	    DEBUG_MESS(2, "Failed to allocate spline memory sp @ %p", self->spline);
 	      pygsl_error("Failed to allocate spline memory",
-			  "src\\gslwrap\\interpolation.i", 317, GSL_EFAILED);
+			  "src/gslwrap/interpolation.i", 317, GSL_EFAILED);
 	      return NULL;
 	  }
 	  self->acc = gsl_interp_accel_alloc();
@@ -4219,7 +4237,7 @@ SWIGINTERN struct pygsl_spline *new_pygsl_spline(gsl_interp_type const *T,size_t
 	       gsl_spline_free(self->spline);
 	       self->spline = NULL;
 	       pygsl_error("Failed to allocate acceleration memory",
-			   "src\\gslwrap\\interpolation.i", 328, GSL_EFAILED);
+			   "src/gslwrap/interpolation.i", 328, GSL_EFAILED);
 	       return NULL;
 	  }
 	  return self;
@@ -4318,7 +4336,7 @@ SWIGINTERN struct pygsl_interp *new_pygsl_interp(gsl_interp_type const *T,size_t
 	  if(self->interp == NULL){
 	    DEBUG_MESS(2, "Failed to allocate interp memory sp @ %p", self->interp);
 	      pygsl_error("Failed to allocate interp memory",
-			  "src\\gslwrap\\interpolation.i", 472, GSL_EFAILED);
+			  "src/gslwrap/interpolation.i", 472, GSL_EFAILED);
 	      return NULL;
 	  }
 	  self->acc = gsl_interp_accel_alloc();
@@ -4329,7 +4347,7 @@ SWIGINTERN struct pygsl_interp *new_pygsl_interp(gsl_interp_type const *T,size_t
 	       gsl_interp_free(self->interp);
 	       self->interp = NULL;
 	       pygsl_error("Failed to allocate acceleration memory",
-			   "src\\gslwrap\\interpolation.i", 483, GSL_EFAILED);
+			   "src/gslwrap/interpolation.i", 483, GSL_EFAILED);
 	       return NULL;
 	  }
 	  return self;
@@ -4619,8 +4637,8 @@ SWIGINTERN PyObject *_wrap_Permutation_swap(PyObject *SWIGUNUSEDPARM(self), PyOb
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -4672,8 +4690,8 @@ SWIGINTERN PyObject *_wrap_Permutation_valid(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -4846,8 +4864,8 @@ SWIGINTERN PyObject *_wrap_Permutation__linear_to_canonical(PyObject *SWIGUNUSED
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -4889,8 +4907,8 @@ SWIGINTERN PyObject *_wrap_Permutation__canonical_to_linear(PyObject *SWIGUNUSED
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -4941,8 +4959,8 @@ SWIGINTERN PyObject *_wrap_Permutation__mul(PyObject *SWIGUNUSEDPARM(self), PyOb
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -4984,8 +5002,8 @@ SWIGINTERN PyObject *_wrap_Permutation__inverse(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -5844,8 +5862,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_matmult(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -5959,8 +5977,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_matmult_mod(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6057,8 +6075,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_exponential_ss(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6222,8 +6240,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_householder_hm(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6305,8 +6323,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_householder_mh(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6389,8 +6407,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_householder_hv(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6457,8 +6475,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_householder_hm1(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -6529,8 +6547,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_complex_householder_hm(PyObject *SWIGUNUSE
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7129,8 +7147,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_SV_decomp(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7266,8 +7284,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_SV_decomp_mod(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7384,8 +7402,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_SV_decomp_jacobi(PyObject *SWIGUNUSEDPARM(
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7512,8 +7530,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_SV_solve(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7640,8 +7658,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_LU_solve(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7733,8 +7751,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_LU_svx(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7860,8 +7878,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_LU_refine(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -7972,8 +7990,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_LU_invert(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8208,8 +8226,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_complex_LU_solve(PyObject *SWIGUNUSEDPARM(
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8281,8 +8299,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_complex_LU_svx(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8398,8 +8416,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_complex_LU_refine(PyObject *SWIGUNUSEDPARM
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8480,8 +8498,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_complex_LU_invert(PyObject *SWIGUNUSEDPARM
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8712,8 +8730,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_decomp(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8816,8 +8834,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_solve(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -8925,8 +8943,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_svx(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9054,8 +9072,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_lssolve(PyObject *SWIGUNUSEDPARM(self),
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9187,8 +9205,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_QRsolve(PyObject *SWIGUNUSEDPARM(self),
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9296,8 +9314,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_Rsolve(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9380,8 +9398,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_Rsvx(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9483,8 +9501,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_update(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9592,8 +9610,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_QTvec(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9691,8 +9709,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_Qvec(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -9892,8 +9910,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QR_unpack(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -10001,8 +10019,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_R_solve(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -10178,8 +10196,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_decomp(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -10324,8 +10342,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_decomp2(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -10473,8 +10491,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_solve(PyObject *SWIGUNUSEDPARM(self),
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -10898,8 +10916,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_svx(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -11020,8 +11038,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_QRsolve(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -11138,8 +11156,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_Rsolve(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -11231,8 +11249,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_Rsvx(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -11343,8 +11361,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_QRPT_update(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -14622,8 +14640,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_cholesky_decomp(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -14741,8 +14759,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_cholesky_solve(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -14778,6 +14796,94 @@ fail:
   {
     Py_XDECREF(_PyVector3);
     _PyVector3 = NULL;
+    FUNC_MESS_END();
+  }
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_gsl_linalg_cholesky_solve_mat(PyObject *SWIGUNUSEDPARM(self), PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  gsl_matrix *arg1 = (gsl_matrix *) 0 ;
+  gsl_matrix *arg2 = (gsl_matrix *) 0 ;
+  gsl_matrix *arg3 = (gsl_matrix *) 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject * obj1 = 0 ;
+  PyObject * obj2 = 0 ;
+  char *  kwnames[] = {
+    (char *) "cholesky",(char *) "B",(char *) "X", NULL 
+  };
+  int result;
+  
+  
+  PyArrayObject * _PyMatrix1 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix1;
+  
+  
+  PyArrayObject * _PyMatrix2 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix2;
+  
+  
+  PyArrayObject * _PyMatrix3 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix3;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OOO:gsl_linalg_cholesky_solve_mat",kwnames,&obj0,&obj1,&obj2)) SWIG_fail;
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj0, arg1, _PyMatrix1, _matrix1,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 1, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj1, arg2, _PyMatrix2, _matrix2,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 2, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj2, arg3, _PyMatrix3, _matrix3,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 3, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  result = (int)gsl_linalg_cholesky_solve_mat((gsl_matrix const *)arg1,(gsl_matrix const *)arg2,arg3);
+  resultobj = SWIG_From_int((int)(result));
+  {
+    Py_XDECREF(_PyMatrix1);
+    _PyMatrix1 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix3);
+    _PyMatrix3 = NULL;
+    FUNC_MESS_END();
+  }
+  return resultobj;
+fail:
+  {
+    Py_XDECREF(_PyMatrix1);
+    _PyMatrix1 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix3);
+    _PyMatrix3 = NULL;
     FUNC_MESS_END();
   }
   return NULL;
@@ -14825,8 +14931,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_cholesky_svx(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -14852,6 +14958,70 @@ fail:
   {
     Py_XDECREF(_PyVector2);
     _PyVector2 = NULL;
+    FUNC_MESS_END();
+  }
+  return NULL;
+}
+
+
+SWIGINTERN PyObject *_wrap_gsl_linalg_cholesky_svx_mat(PyObject *SWIGUNUSEDPARM(self), PyObject *args, PyObject *kwargs) {
+  PyObject *resultobj = 0;
+  gsl_matrix *arg1 = (gsl_matrix *) 0 ;
+  gsl_matrix *arg2 = (gsl_matrix *) 0 ;
+  PyObject * obj0 = 0 ;
+  PyObject * obj1 = 0 ;
+  char *  kwnames[] = {
+    (char *) "cholesky",(char *) "X", NULL 
+  };
+  int result;
+  
+  
+  PyArrayObject * _PyMatrix1 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix1;
+  
+  
+  PyArrayObject * _PyMatrix2 = NULL;
+  TYPE_VIEW_gsl_matrix _matrix2;
+  
+  if (!PyArg_ParseTupleAndKeywords(args,kwargs,(char *)"OO:gsl_linalg_cholesky_svx_mat",kwnames,&obj0,&obj1)) SWIG_fail;
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj0, arg1, _PyMatrix1, _matrix1,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 1, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  
+  {
+    PyGSL_array_index_t stride;
+    if(PyGSL_MATRIX_CONVERT(obj1, arg2, _PyMatrix2, _matrix2,
+        PyGSL_INPUT_ARRAY, gsl_matrix, 2, &stride) != GSL_SUCCESS)
+    goto fail;	  
+  }
+  
+  result = (int)gsl_linalg_cholesky_svx_mat((gsl_matrix const *)arg1,arg2);
+  resultobj = SWIG_From_int((int)(result));
+  {
+    Py_XDECREF(_PyMatrix1);
+    _PyMatrix1 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
+    FUNC_MESS_END();
+  }
+  return resultobj;
+fail:
+  {
+    Py_XDECREF(_PyMatrix1);
+    _PyMatrix1 = NULL;
+    FUNC_MESS_END();
+  }
+  {
+    Py_XDECREF(_PyMatrix2);
+    _PyMatrix2 = NULL;
     FUNC_MESS_END();
   }
   return NULL;
@@ -16721,8 +16891,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_symmtd_decomp(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -16839,8 +17009,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_symmtd_unpack(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -16958,8 +17128,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_symmtd_unpack_T(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17042,8 +17212,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_hermtd_decomp(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17150,8 +17320,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_hermtd_unpack(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17259,8 +17429,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_hermtd_unpack_T(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17358,8 +17528,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_HH_solve(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17442,8 +17612,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_HH_svx(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17547,8 +17717,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_solve_symm_tridiag(PyObject *SWIGUNUSEDPAR
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17687,8 +17857,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_solve_tridiag(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17822,8 +17992,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_solve_symm_cyc_tridiag(PyObject *SWIGUNUSE
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -17962,8 +18132,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_solve_cyc_tridiag(PyObject *SWIGUNUSEDPARM
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -18081,8 +18251,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_bidiag_decomp(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -18238,8 +18408,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_bidiag_unpack(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -18391,8 +18561,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_bidiag_unpack2(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -18500,8 +18670,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_bidiag_unpack_B(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -18714,8 +18884,8 @@ SWIGINTERN PyObject *_wrap_gsl_linalg_balance_columns(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -19168,8 +19338,8 @@ SWIGINTERN PyObject *_wrap_pygsl_linalg_LU_decomp(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -19242,8 +19412,8 @@ SWIGINTERN PyObject *_wrap_pygsl_linalg_complex_LU_decomp(PyObject *SWIGUNUSEDPA
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20171,8 +20341,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sdsdot(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20230,8 +20400,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsdot(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20300,8 +20470,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sdot(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20359,8 +20529,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ddot(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20450,8 +20620,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cdotu(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20515,8 +20685,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cdotc(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20580,8 +20750,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zdotu(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -20656,8 +20826,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zdotc(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21124,8 +21294,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sswap(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21179,8 +21349,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_scopy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21243,8 +21413,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_saxpy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21298,8 +21468,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dswap(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21373,8 +21543,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dcopy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21457,8 +21627,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_daxpy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21532,8 +21702,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cswap(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21587,8 +21757,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ccopy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21650,8 +21820,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_caxpy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21705,8 +21875,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zswap(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21760,8 +21930,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zcopy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21823,8 +21993,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zaxpy(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21884,8 +22054,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_srotg(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -21954,8 +22124,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_srotmg(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22027,8 +22197,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_srot(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22091,8 +22261,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_srotm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22152,8 +22322,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_drotg(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22222,8 +22392,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_drotmg(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22295,8 +22465,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_drot(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22379,8 +22549,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_drotm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22737,8 +22907,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sgemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22828,8 +22998,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_strmv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -22919,8 +23089,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_strsv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23025,8 +23195,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dgemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23142,8 +23312,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dtrmv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23249,8 +23419,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dtrsv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23369,8 +23539,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cgemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23460,8 +23630,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ctrmv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23551,8 +23721,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ctrsv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23655,8 +23825,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zgemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23752,8 +23922,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ztrmv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23849,8 +24019,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ztrsv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -23961,8 +24131,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssymv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24049,8 +24219,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sger(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24131,8 +24301,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssyr(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24228,8 +24398,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssyr2(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24334,8 +24504,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsymv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24448,8 +24618,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dger(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24556,8 +24726,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsyr(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24669,8 +24839,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsyr2(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24799,8 +24969,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_chemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24886,8 +25056,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cgeru(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -24973,8 +25143,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cgerc(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25055,8 +25225,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cher(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25151,8 +25321,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cher2(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25255,8 +25425,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zhemv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25348,8 +25518,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zgeru(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25441,8 +25611,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zgerc(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25529,8 +25699,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zher(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25631,8 +25801,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zher2(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25750,8 +25920,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_sgemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -25883,8 +26053,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssymm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26002,8 +26172,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssyrk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26125,8 +26295,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ssyr2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26253,8 +26423,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_strmm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26371,8 +26541,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_strsm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26494,8 +26664,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dgemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26633,8 +26803,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsymm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26758,8 +26928,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsyrk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -26887,8 +27057,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dsyr2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27021,8 +27191,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dtrmm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27145,8 +27315,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_dtrsm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27272,8 +27442,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cgemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27403,8 +27573,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_csymm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27520,8 +27690,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_csyrk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27641,8 +27811,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_csyr2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27768,8 +27938,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ctrmm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -27885,8 +28055,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ctrsm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28006,8 +28176,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zgemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28143,8 +28313,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zsymm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28266,8 +28436,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zsyrk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28393,8 +28563,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zsyr2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28526,8 +28696,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ztrmm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28649,8 +28819,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_ztrsm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28776,8 +28946,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_chemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -28895,8 +29065,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cherk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29017,8 +29187,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_cher2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29148,8 +29318,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zhemm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29273,8 +29443,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zherk(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29401,8 +29571,8 @@ SWIGINTERN PyObject *_wrap_gsl_blas_zher2k(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29668,8 +29838,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_symm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -29983,8 +30153,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_symmv(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -30272,8 +30442,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_herm(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -30609,8 +30779,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_hermv(PyObject *SWIGUNUSEDPARM(self), PyObj
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -30798,8 +30968,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_francis_workspace_compute_t_get(PyObject *S
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -30982,8 +31152,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_francis(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31069,8 +31239,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_francis_Z(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31187,8 +31357,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymm_workspace_params(PyObject *SWIGUNUS
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31306,8 +31476,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymm_workspace_do_balance_get(PyObject *
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31511,8 +31681,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymm(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31604,8 +31774,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymm_Z(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -31929,8 +32099,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymmv(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32046,8 +32216,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymmv_Z(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32293,8 +32463,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gensymm(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32382,8 +32552,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gensymm_standardize(PyObject *SWIGUNUSEDPAR
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32633,8 +32803,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gensymmv(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32902,8 +33072,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genherm(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -32991,8 +33161,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genherm_standardize(PyObject *SWIGUNUSEDPAR
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -33254,8 +33424,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genhermv(PyObject *SWIGUNUSEDPARM(self), Py
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -33509,8 +33679,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gen_workspace_needtop_get(PyObject *SWIGUNU
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -33672,8 +33842,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gen_workspace_compute_s_get(PyObject *SWIGU
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -33703,8 +33873,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gen_workspace_compute_t_get(PyObject *SWIGU
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -33946,8 +34116,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gen(PyObject *SWIGUNUSEDPARM(self), PyObjec
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -34102,8 +34272,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gen_QZ(PyObject *SWIGUNUSEDPARM(self), PyOb
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -34586,8 +34756,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genv(PyObject *SWIGUNUSEDPARM(self), PyObje
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -34766,8 +34936,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genv_QZ(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -34895,8 +35065,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_symmv_sort(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -34978,8 +35148,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_hermv_sort(PyObject *SWIGUNUSEDPARM(self), 
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35061,8 +35231,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_nonsymmv_sort(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35134,8 +35304,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_gensymmv_sort(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35217,8 +35387,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genhermv_sort(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35315,8 +35485,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_genv_sort(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35433,8 +35603,8 @@ SWIGINTERN PyObject *_wrap_gsl_schur_gen_eigvals(PyObject *SWIGUNUSEDPARM(self),
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35591,8 +35761,8 @@ SWIGINTERN PyObject *_wrap_gsl_schur_solve_equation(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35760,8 +35930,8 @@ SWIGINTERN PyObject *_wrap_gsl_schur_solve_equation_z(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35873,8 +36043,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_jacobi(PyObject *SWIGUNUSEDPARM(self), PyOb
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -35965,8 +36135,8 @@ SWIGINTERN PyObject *_wrap_gsl_eigen_invert_jacobi(PyObject *SWIGUNUSEDPARM(self
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36050,8 +36220,8 @@ SWIGINTERN PyObject *_wrap_gsl_interp_accel_reset(PyObject *SWIGUNUSEDPARM(self)
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36221,8 +36391,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_accel_reset(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36347,8 +36517,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_init(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36436,8 +36606,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_eval_deriv_e(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36523,8 +36693,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_eval_deriv2_e(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36662,8 +36832,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_eval_integ_e(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -36715,8 +36885,8 @@ SWIGINTERN PyObject *_wrap_pygsl_spline_eval_e(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37401,8 +37571,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_init(PyObject *SWIGUNUSEDPARM(self), PyO
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37492,8 +37662,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_eval_e(PyObject *SWIGUNUSEDPARM(self), P
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37579,8 +37749,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_eval_deriv_e(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37666,8 +37836,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_eval_deriv2_e(PyObject *SWIGUNUSEDPARM(s
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37762,8 +37932,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_eval_integ_e(PyObject *SWIGUNUSEDPARM(se
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37842,8 +38012,8 @@ SWIGINTERN PyObject *_wrap_pygsl_interp_accel_reset(PyObject *SWIGUNUSEDPARM(sel
   {
     DEBUG_MESS(5, "dropping error flag %ld", (long) result);
     if(GSL_SUCCESS != PyGSL_ERROR_FLAG(result)){
-      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps\\gsl_error_typemap.i", 
-        __FUNCTION__, 79); 
+      PyGSL_add_traceback(pygsl_module_for_error_treatment, "typemaps/gsl_error_typemap.i", 
+        __FUNCTION__, 81); 
       goto fail;
     }
     Py_INCREF(Py_None);
@@ -37982,8 +38152,8 @@ fail:
 
 
 static PyMethodDef SwigMethods[] = {
-	 { (char *)"SWIG_PyInstanceMethod_New", (PyCFunction)SWIG_PyInstanceMethod_New, METH_O, NULL},
-	 { (char *)"Permutation_size_get", _wrap_Permutation_size_get, METH_VARARGS, (char *)"\n"
+	 { "SWIG_PyInstanceMethod_New", SWIG_PyInstanceMethod_New, METH_O, NULL},
+	 { "Permutation_size_get", _wrap_Permutation_size_get, METH_VARARGS, (char *)"\n"
 		"Permutation_size_get(Permutation self) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -37991,7 +38161,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_data_get", _wrap_Permutation_data_get, METH_VARARGS, (char *)"\n"
+	 { "Permutation_data_get", _wrap_Permutation_data_get, METH_VARARGS, (char *)"\n"
 		"Permutation_data_get(Permutation self) -> size_t *\n"
 		"\n"
 		"Parameters\n"
@@ -37999,7 +38169,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"new_Permutation", (PyCFunction) _wrap_new_Permutation, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "new_Permutation", (PyCFunction)_wrap_new_Permutation, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"new_Permutation(size_t n) -> Permutation\n"
 		"\n"
 		"Parameters\n"
@@ -38007,7 +38177,7 @@ static PyMethodDef SwigMethods[] = {
 		"n: size_t\n"
 		"\n"
 		""},
-	 { (char *)"delete_Permutation", _wrap_delete_Permutation, METH_VARARGS, (char *)"\n"
+	 { "delete_Permutation", _wrap_delete_Permutation, METH_VARARGS, (char *)"\n"
 		"delete_Permutation(Permutation self)\n"
 		"\n"
 		"Parameters\n"
@@ -38015,7 +38185,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_inversions", _wrap_Permutation_inversions, METH_VARARGS, (char *)"\n"
+	 { "Permutation_inversions", _wrap_Permutation_inversions, METH_VARARGS, (char *)"\n"
 		"Permutation_inversions(Permutation self) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38023,7 +38193,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation___getitem__", (PyCFunction) _wrap_Permutation___getitem__, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation___getitem__", (PyCFunction)_wrap_Permutation___getitem__, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation___getitem__(Permutation self, size_t const i) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38032,7 +38202,7 @@ static PyMethodDef SwigMethods[] = {
 		"i: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_swap", (PyCFunction) _wrap_Permutation_swap, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation_swap", (PyCFunction)_wrap_Permutation_swap, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation_swap(Permutation self, size_t const i, size_t const j) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38042,7 +38212,7 @@ static PyMethodDef SwigMethods[] = {
 		"j: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"Permutation___len__", _wrap_Permutation___len__, METH_VARARGS, (char *)"\n"
+	 { "Permutation___len__", _wrap_Permutation___len__, METH_VARARGS, (char *)"\n"
 		"Permutation___len__(Permutation self) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38050,7 +38220,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_valid", _wrap_Permutation_valid, METH_VARARGS, (char *)"\n"
+	 { "Permutation_valid", _wrap_Permutation_valid, METH_VARARGS, (char *)"\n"
 		"Permutation_valid(Permutation self) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38058,7 +38228,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_reverse", _wrap_Permutation_reverse, METH_VARARGS, (char *)"\n"
+	 { "Permutation_reverse", _wrap_Permutation_reverse, METH_VARARGS, (char *)"\n"
 		"Permutation_reverse(Permutation self)\n"
 		"\n"
 		"Parameters\n"
@@ -38066,7 +38236,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_next", _wrap_Permutation_next, METH_VARARGS, (char *)"\n"
+	 { "Permutation_next", _wrap_Permutation_next, METH_VARARGS, (char *)"\n"
 		"Permutation_next(Permutation self) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38074,7 +38244,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_prev", _wrap_Permutation_prev, METH_VARARGS, (char *)"\n"
+	 { "Permutation_prev", _wrap_Permutation_prev, METH_VARARGS, (char *)"\n"
 		"Permutation_prev(Permutation self) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38082,7 +38252,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation___str__", _wrap_Permutation___str__, METH_VARARGS, (char *)"\n"
+	 { "Permutation___str__", _wrap_Permutation___str__, METH_VARARGS, (char *)"\n"
 		"Permutation___str__(Permutation self) -> char *\n"
 		"\n"
 		"Parameters\n"
@@ -38090,7 +38260,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_tolist", _wrap_Permutation_tolist, METH_VARARGS, (char *)"\n"
+	 { "Permutation_tolist", _wrap_Permutation_tolist, METH_VARARGS, (char *)"\n"
 		"Permutation_tolist(Permutation self) -> PyObject *\n"
 		"\n"
 		"Parameters\n"
@@ -38098,7 +38268,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_toarray", _wrap_Permutation_toarray, METH_VARARGS, (char *)"\n"
+	 { "Permutation_toarray", _wrap_Permutation_toarray, METH_VARARGS, (char *)"\n"
 		"Permutation_toarray(Permutation self) -> PyObject *\n"
 		"\n"
 		"Parameters\n"
@@ -38106,7 +38276,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation__linear_to_canonical", (PyCFunction) _wrap_Permutation__linear_to_canonical, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation__linear_to_canonical", (PyCFunction)_wrap_Permutation__linear_to_canonical, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation__linear_to_canonical(Permutation self, Permutation q) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38115,7 +38285,7 @@ static PyMethodDef SwigMethods[] = {
 		"q: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation__canonical_to_linear", (PyCFunction) _wrap_Permutation__canonical_to_linear, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation__canonical_to_linear", (PyCFunction)_wrap_Permutation__canonical_to_linear, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation__canonical_to_linear(Permutation self, Permutation q) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38124,7 +38294,7 @@ static PyMethodDef SwigMethods[] = {
 		"q: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation__mul", (PyCFunction) _wrap_Permutation__mul, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation__mul", (PyCFunction)_wrap_Permutation__mul, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation__mul(Permutation self, Permutation res, Permutation m2) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38134,7 +38304,7 @@ static PyMethodDef SwigMethods[] = {
 		"m2: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation__inverse", (PyCFunction) _wrap_Permutation__inverse, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation__inverse", (PyCFunction)_wrap_Permutation__inverse, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"Permutation__inverse(Permutation self, Permutation inv) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -38143,7 +38313,7 @@ static PyMethodDef SwigMethods[] = {
 		"inv: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_linear_cycles", _wrap_Permutation_linear_cycles, METH_VARARGS, (char *)"\n"
+	 { "Permutation_linear_cycles", _wrap_Permutation_linear_cycles, METH_VARARGS, (char *)"\n"
 		"Permutation_linear_cycles(Permutation self) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38151,7 +38321,7 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_canonical_cycles", _wrap_Permutation_canonical_cycles, METH_VARARGS, (char *)"\n"
+	 { "Permutation_canonical_cycles", _wrap_Permutation_canonical_cycles, METH_VARARGS, (char *)"\n"
 		"Permutation_canonical_cycles(Permutation self) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38159,8 +38329,8 @@ static PyMethodDef SwigMethods[] = {
 		"self: struct gsl_permutation_struct *\n"
 		"\n"
 		""},
-	 { (char *)"Permutation_swigregister", Permutation_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_permutation_alloc", (PyCFunction) _wrap_gsl_permutation_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "Permutation_swigregister", Permutation_swigregister, METH_VARARGS, NULL},
+	 { "gsl_permutation_alloc", (PyCFunction)_wrap_gsl_permutation_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_alloc(size_t const n) -> Permutation\n"
 		"\n"
 		"Parameters\n"
@@ -38168,7 +38338,7 @@ static PyMethodDef SwigMethods[] = {
 		"n: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_calloc", (PyCFunction) _wrap_gsl_permutation_calloc, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_calloc", (PyCFunction)_wrap_gsl_permutation_calloc, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_calloc(size_t const n) -> Permutation\n"
 		"\n"
 		"Parameters\n"
@@ -38176,7 +38346,7 @@ static PyMethodDef SwigMethods[] = {
 		"n: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_init", (PyCFunction) _wrap_gsl_permutation_init, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_init", (PyCFunction)_wrap_gsl_permutation_init, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_init(Permutation p)\n"
 		"\n"
 		"Parameters\n"
@@ -38184,7 +38354,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_free", (PyCFunction) _wrap_gsl_permutation_free, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_free", (PyCFunction)_wrap_gsl_permutation_free, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_free(Permutation p)\n"
 		"\n"
 		"Parameters\n"
@@ -38192,7 +38362,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_fread", (PyCFunction) _wrap_gsl_permutation_fread, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_fread", (PyCFunction)_wrap_gsl_permutation_fread, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_fread(FILE * stream, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38201,7 +38371,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_fwrite", (PyCFunction) _wrap_gsl_permutation_fwrite, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_fwrite", (PyCFunction)_wrap_gsl_permutation_fwrite, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_fwrite(FILE * stream, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38210,7 +38380,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_fscanf", (PyCFunction) _wrap_gsl_permutation_fscanf, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_fscanf", (PyCFunction)_wrap_gsl_permutation_fscanf, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_fscanf(FILE * stream, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38219,7 +38389,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_fprintf", (PyCFunction) _wrap_gsl_permutation_fprintf, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_fprintf", (PyCFunction)_wrap_gsl_permutation_fprintf, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_fprintf(FILE * stream, Permutation p, char const * format) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38229,7 +38399,7 @@ static PyMethodDef SwigMethods[] = {
 		"format: char const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_size", (PyCFunction) _wrap_gsl_permutation_size, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_size", (PyCFunction)_wrap_gsl_permutation_size, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_size(Permutation p) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38237,7 +38407,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_data", (PyCFunction) _wrap_gsl_permutation_data, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_data", (PyCFunction)_wrap_gsl_permutation_data, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_data(Permutation p) -> size_t *\n"
 		"\n"
 		"Parameters\n"
@@ -38245,7 +38415,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_swap", (PyCFunction) _wrap_gsl_permutation_swap, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_swap", (PyCFunction)_wrap_gsl_permutation_swap, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_swap(Permutation p, size_t const i, size_t const j) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38255,7 +38425,7 @@ static PyMethodDef SwigMethods[] = {
 		"j: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_valid", (PyCFunction) _wrap_gsl_permutation_valid, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_valid", (PyCFunction)_wrap_gsl_permutation_valid, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_valid(Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38263,7 +38433,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_reverse", (PyCFunction) _wrap_gsl_permutation_reverse, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_reverse", (PyCFunction)_wrap_gsl_permutation_reverse, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_reverse(Permutation p)\n"
 		"\n"
 		"Parameters\n"
@@ -38271,7 +38441,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_inverse", (PyCFunction) _wrap_gsl_permutation_inverse, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_inverse", (PyCFunction)_wrap_gsl_permutation_inverse, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_inverse(Permutation inv, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38280,7 +38450,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_next", (PyCFunction) _wrap_gsl_permutation_next, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_next", (PyCFunction)_wrap_gsl_permutation_next, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_next(Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38288,7 +38458,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_prev", (PyCFunction) _wrap_gsl_permutation_prev, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_prev", (PyCFunction)_wrap_gsl_permutation_prev, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_prev(Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38296,7 +38466,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_linear_to_canonical", (PyCFunction) _wrap_gsl_permutation_linear_to_canonical, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_linear_to_canonical", (PyCFunction)_wrap_gsl_permutation_linear_to_canonical, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_linear_to_canonical(Permutation q, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38305,7 +38475,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_canonical_to_linear", (PyCFunction) _wrap_gsl_permutation_canonical_to_linear, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_canonical_to_linear", (PyCFunction)_wrap_gsl_permutation_canonical_to_linear, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_canonical_to_linear(Permutation p, Permutation q) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38314,7 +38484,7 @@ static PyMethodDef SwigMethods[] = {
 		"q: gsl_permutation const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_permutation_get", (PyCFunction) _wrap_gsl_permutation_get, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_permutation_get", (PyCFunction)_wrap_gsl_permutation_get, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_permutation_get(Permutation p, size_t const i) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38323,7 +38493,7 @@ static PyMethodDef SwigMethods[] = {
 		"i: size_t const\n"
 		"\n"
 		""},
-	 { (char *)"pygsl_linalg_complex_householder_mh", (PyCFunction) _wrap_pygsl_linalg_complex_householder_mh, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "pygsl_linalg_complex_householder_mh", (PyCFunction)_wrap_pygsl_linalg_complex_householder_mh, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"pygsl_linalg_complex_householder_mh(gsl_complex tau, gsl_vector_complex const * v, gsl_matrix_complex * OUTPUT) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38333,7 +38503,7 @@ static PyMethodDef SwigMethods[] = {
 		"OUTPUT: gsl_matrix_complex * (output)\n"
 		"\n"
 		""},
-	 { (char *)"pygsl_linalg_hessenberg_decomp", (PyCFunction) _wrap_pygsl_linalg_hessenberg_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "pygsl_linalg_hessenberg_decomp", (PyCFunction)_wrap_pygsl_linalg_hessenberg_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"pygsl_linalg_hessenberg_decomp(gsl_matrix * A, gsl_vector * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38342,7 +38512,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"pygsl_linalg_complex_cholesky_invert", (PyCFunction) _wrap_pygsl_linalg_complex_cholesky_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "pygsl_linalg_complex_cholesky_invert", (PyCFunction)_wrap_pygsl_linalg_complex_cholesky_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"pygsl_linalg_complex_cholesky_invert(gsl_matrix_complex * cholesky) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38350,7 +38520,7 @@ static PyMethodDef SwigMethods[] = {
 		"cholesky: gsl_matrix_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_matmult", (PyCFunction) _wrap_gsl_linalg_matmult, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_matmult", (PyCFunction)_wrap_gsl_linalg_matmult, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_matmult(gsl_matrix const * A, gsl_matrix const * B, gsl_matrix * C) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38360,7 +38530,7 @@ static PyMethodDef SwigMethods[] = {
 		"C: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_matmult_mod", (PyCFunction) _wrap_gsl_linalg_matmult_mod, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_matmult_mod", (PyCFunction)_wrap_gsl_linalg_matmult_mod, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_matmult_mod(gsl_matrix const * A, gsl_linalg_matrix_mod_t modA, gsl_matrix const * B, gsl_linalg_matrix_mod_t modB, gsl_matrix * C) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38372,7 +38542,7 @@ static PyMethodDef SwigMethods[] = {
 		"C: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_exponential_ss", (PyCFunction) _wrap_gsl_linalg_exponential_ss, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_exponential_ss", (PyCFunction)_wrap_gsl_linalg_exponential_ss, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_exponential_ss(gsl_matrix const * A, gsl_matrix * eA, gsl_mode_t mode) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38382,7 +38552,7 @@ static PyMethodDef SwigMethods[] = {
 		"mode: gsl_mode_t\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_householder_transform", (PyCFunction) _wrap_gsl_linalg_householder_transform, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_householder_transform", (PyCFunction)_wrap_gsl_linalg_householder_transform, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_householder_transform(gsl_vector * v) -> double\n"
 		"\n"
 		"Parameters\n"
@@ -38390,7 +38560,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_householder_transform", (PyCFunction) _wrap_gsl_linalg_complex_householder_transform, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_householder_transform", (PyCFunction)_wrap_gsl_linalg_complex_householder_transform, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_householder_transform(gsl_vector_complex * v) -> gsl_complex\n"
 		"\n"
 		"Parameters\n"
@@ -38398,7 +38568,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_householder_hm", (PyCFunction) _wrap_gsl_linalg_householder_hm, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_householder_hm", (PyCFunction)_wrap_gsl_linalg_householder_hm, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_householder_hm(double tau, gsl_vector const * v, gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38408,7 +38578,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_householder_mh", (PyCFunction) _wrap_gsl_linalg_householder_mh, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_householder_mh", (PyCFunction)_wrap_gsl_linalg_householder_mh, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_householder_mh(double tau, gsl_vector const * v, gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38418,7 +38588,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_householder_hv", (PyCFunction) _wrap_gsl_linalg_householder_hv, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_householder_hv", (PyCFunction)_wrap_gsl_linalg_householder_hv, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_householder_hv(double tau, gsl_vector const * v, gsl_vector * w) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38428,7 +38598,7 @@ static PyMethodDef SwigMethods[] = {
 		"w: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_householder_hm1", (PyCFunction) _wrap_gsl_linalg_householder_hm1, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_householder_hm1", (PyCFunction)_wrap_gsl_linalg_householder_hm1, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_householder_hm1(double tau, gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38437,7 +38607,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_householder_hm", (PyCFunction) _wrap_gsl_linalg_complex_householder_hm, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_householder_hm", (PyCFunction)_wrap_gsl_linalg_complex_householder_hm, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_householder_hm(gsl_complex tau, gsl_vector_complex const * v, gsl_matrix_complex * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38447,7 +38617,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_householder_hv", (PyCFunction) _wrap_gsl_linalg_complex_householder_hv, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_householder_hv", (PyCFunction)_wrap_gsl_linalg_complex_householder_hv, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_householder_hv(gsl_complex tau, gsl_vector_complex const * v, gsl_vector_complex * w) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38457,7 +38627,7 @@ static PyMethodDef SwigMethods[] = {
 		"w: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hessenberg_unpack", (PyCFunction) _wrap_gsl_linalg_hessenberg_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hessenberg_unpack", (PyCFunction)_wrap_gsl_linalg_hessenberg_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hessenberg_unpack(gsl_matrix * H, gsl_vector * tau, gsl_matrix * U) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38467,7 +38637,7 @@ static PyMethodDef SwigMethods[] = {
 		"U: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hessenberg_unpack_accum", (PyCFunction) _wrap_gsl_linalg_hessenberg_unpack_accum, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hessenberg_unpack_accum", (PyCFunction)_wrap_gsl_linalg_hessenberg_unpack_accum, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hessenberg_unpack_accum(gsl_matrix * H, gsl_vector * tau, gsl_matrix * U) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38477,7 +38647,7 @@ static PyMethodDef SwigMethods[] = {
 		"U: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hessenberg_set_zero", (PyCFunction) _wrap_gsl_linalg_hessenberg_set_zero, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hessenberg_set_zero", (PyCFunction)_wrap_gsl_linalg_hessenberg_set_zero, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hessenberg_set_zero(gsl_matrix * H) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38485,7 +38655,7 @@ static PyMethodDef SwigMethods[] = {
 		"H: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hessenberg_submatrix", (PyCFunction) _wrap_gsl_linalg_hessenberg_submatrix, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hessenberg_submatrix", (PyCFunction)_wrap_gsl_linalg_hessenberg_submatrix, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hessenberg_submatrix(gsl_matrix * M, gsl_matrix * A, size_t top, gsl_vector * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38496,7 +38666,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hesstri_decomp", (PyCFunction) _wrap_gsl_linalg_hesstri_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hesstri_decomp", (PyCFunction)_wrap_gsl_linalg_hesstri_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hesstri_decomp(gsl_matrix * A, gsl_matrix * B, gsl_matrix * U, gsl_matrix * V, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38508,7 +38678,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_SV_decomp", (PyCFunction) _wrap_gsl_linalg_SV_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_SV_decomp", (PyCFunction)_wrap_gsl_linalg_SV_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_SV_decomp(gsl_matrix * A, gsl_matrix * V, gsl_vector * S, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38519,7 +38689,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_SV_decomp_mod", (PyCFunction) _wrap_gsl_linalg_SV_decomp_mod, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_SV_decomp_mod", (PyCFunction)_wrap_gsl_linalg_SV_decomp_mod, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_SV_decomp_mod(gsl_matrix * A, gsl_matrix * X, gsl_matrix * V, gsl_vector * S, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38531,7 +38701,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_SV_decomp_jacobi", (PyCFunction) _wrap_gsl_linalg_SV_decomp_jacobi, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_SV_decomp_jacobi", (PyCFunction)_wrap_gsl_linalg_SV_decomp_jacobi, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_SV_decomp_jacobi(gsl_matrix * A, gsl_matrix * Q, gsl_vector * S) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38541,7 +38711,7 @@ static PyMethodDef SwigMethods[] = {
 		"S: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_SV_solve", (PyCFunction) _wrap_gsl_linalg_SV_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_SV_solve", (PyCFunction)_wrap_gsl_linalg_SV_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_SV_solve(gsl_matrix const * U, gsl_matrix const * Q, gsl_vector const * S, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38553,7 +38723,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_solve", (PyCFunction) _wrap_gsl_linalg_LU_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_solve", (PyCFunction)_wrap_gsl_linalg_LU_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_solve(gsl_matrix const * LU, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38564,7 +38734,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_svx", (PyCFunction) _wrap_gsl_linalg_LU_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_svx", (PyCFunction)_wrap_gsl_linalg_LU_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_svx(gsl_matrix const * LU, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38574,7 +38744,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_refine", (PyCFunction) _wrap_gsl_linalg_LU_refine, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_refine", (PyCFunction)_wrap_gsl_linalg_LU_refine, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_refine(gsl_matrix const * A, gsl_matrix const * LU, Permutation p, gsl_vector const * b, gsl_vector * x, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38587,7 +38757,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_invert", (PyCFunction) _wrap_gsl_linalg_LU_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_invert", (PyCFunction)_wrap_gsl_linalg_LU_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_invert(gsl_matrix const * LU, Permutation p, gsl_matrix * inverse) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38597,7 +38767,7 @@ static PyMethodDef SwigMethods[] = {
 		"inverse: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_det", (PyCFunction) _wrap_gsl_linalg_LU_det, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_det", (PyCFunction)_wrap_gsl_linalg_LU_det, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_det(gsl_matrix * LU, int signum) -> double\n"
 		"\n"
 		"Parameters\n"
@@ -38606,7 +38776,7 @@ static PyMethodDef SwigMethods[] = {
 		"signum: int\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_lndet", (PyCFunction) _wrap_gsl_linalg_LU_lndet, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_lndet", (PyCFunction)_wrap_gsl_linalg_LU_lndet, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_lndet(gsl_matrix * LU) -> double\n"
 		"\n"
 		"Parameters\n"
@@ -38614,7 +38784,7 @@ static PyMethodDef SwigMethods[] = {
 		"LU: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LU_sgndet", (PyCFunction) _wrap_gsl_linalg_LU_sgndet, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LU_sgndet", (PyCFunction)_wrap_gsl_linalg_LU_sgndet, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LU_sgndet(gsl_matrix * lu, int signum) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38623,7 +38793,7 @@ static PyMethodDef SwigMethods[] = {
 		"signum: int\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_solve", (PyCFunction) _wrap_gsl_linalg_complex_LU_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_solve", (PyCFunction)_wrap_gsl_linalg_complex_LU_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_solve(gsl_matrix_complex const * LU, Permutation p, gsl_vector_complex const * b, gsl_vector_complex * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38634,7 +38804,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_svx", (PyCFunction) _wrap_gsl_linalg_complex_LU_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_svx", (PyCFunction)_wrap_gsl_linalg_complex_LU_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_svx(gsl_matrix_complex const * LU, Permutation p, gsl_vector_complex * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38644,7 +38814,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_refine", (PyCFunction) _wrap_gsl_linalg_complex_LU_refine, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_refine", (PyCFunction)_wrap_gsl_linalg_complex_LU_refine, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_refine(gsl_matrix_complex const * A, gsl_matrix_complex const * LU, Permutation p, gsl_vector_complex const * b, gsl_vector_complex * x, gsl_vector_complex * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38657,7 +38827,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_invert", (PyCFunction) _wrap_gsl_linalg_complex_LU_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_invert", (PyCFunction)_wrap_gsl_linalg_complex_LU_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_invert(gsl_matrix_complex const * LU, Permutation p, gsl_matrix_complex * inverse) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38667,7 +38837,7 @@ static PyMethodDef SwigMethods[] = {
 		"inverse: gsl_matrix_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_det", (PyCFunction) _wrap_gsl_linalg_complex_LU_det, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_det", (PyCFunction)_wrap_gsl_linalg_complex_LU_det, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_det(gsl_matrix_complex * LU, int signum) -> gsl_complex\n"
 		"\n"
 		"Parameters\n"
@@ -38676,7 +38846,7 @@ static PyMethodDef SwigMethods[] = {
 		"signum: int\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_lndet", (PyCFunction) _wrap_gsl_linalg_complex_LU_lndet, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_lndet", (PyCFunction)_wrap_gsl_linalg_complex_LU_lndet, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_lndet(gsl_matrix_complex * LU) -> double\n"
 		"\n"
 		"Parameters\n"
@@ -38684,7 +38854,7 @@ static PyMethodDef SwigMethods[] = {
 		"LU: gsl_matrix_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_LU_sgndet", (PyCFunction) _wrap_gsl_linalg_complex_LU_sgndet, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_LU_sgndet", (PyCFunction)_wrap_gsl_linalg_complex_LU_sgndet, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_LU_sgndet(gsl_matrix_complex * LU, int signum) -> gsl_complex\n"
 		"\n"
 		"Parameters\n"
@@ -38693,7 +38863,7 @@ static PyMethodDef SwigMethods[] = {
 		"signum: int\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_decomp", (PyCFunction) _wrap_gsl_linalg_QR_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_decomp", (PyCFunction)_wrap_gsl_linalg_QR_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_decomp(gsl_matrix * A, gsl_vector * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38702,7 +38872,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_solve", (PyCFunction) _wrap_gsl_linalg_QR_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_solve", (PyCFunction)_wrap_gsl_linalg_QR_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_solve(gsl_matrix const * QR, gsl_vector const * tau, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38713,7 +38883,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_svx", (PyCFunction) _wrap_gsl_linalg_QR_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_svx", (PyCFunction)_wrap_gsl_linalg_QR_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_svx(gsl_matrix const * QR, gsl_vector const * tau, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38723,7 +38893,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_lssolve", (PyCFunction) _wrap_gsl_linalg_QR_lssolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_lssolve", (PyCFunction)_wrap_gsl_linalg_QR_lssolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_lssolve(gsl_matrix const * QR, gsl_vector const * tau, gsl_vector const * b, gsl_vector * x, gsl_vector * residual) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38735,7 +38905,7 @@ static PyMethodDef SwigMethods[] = {
 		"residual: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_QRsolve", (PyCFunction) _wrap_gsl_linalg_QR_QRsolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_QRsolve", (PyCFunction)_wrap_gsl_linalg_QR_QRsolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_QRsolve(gsl_matrix * Q, gsl_matrix * R, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38746,7 +38916,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_Rsolve", (PyCFunction) _wrap_gsl_linalg_QR_Rsolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_Rsolve", (PyCFunction)_wrap_gsl_linalg_QR_Rsolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_Rsolve(gsl_matrix const * QR, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38756,7 +38926,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_Rsvx", (PyCFunction) _wrap_gsl_linalg_QR_Rsvx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_Rsvx", (PyCFunction)_wrap_gsl_linalg_QR_Rsvx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_Rsvx(gsl_matrix const * QR, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38765,7 +38935,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_update", (PyCFunction) _wrap_gsl_linalg_QR_update, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_update", (PyCFunction)_wrap_gsl_linalg_QR_update, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_update(gsl_matrix * Q, gsl_matrix * R, gsl_vector * w, gsl_vector const * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38776,7 +38946,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_QTvec", (PyCFunction) _wrap_gsl_linalg_QR_QTvec, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_QTvec", (PyCFunction)_wrap_gsl_linalg_QR_QTvec, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_QTvec(gsl_matrix const * QR, gsl_vector const * tau, gsl_vector * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38786,7 +38956,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_Qvec", (PyCFunction) _wrap_gsl_linalg_QR_Qvec, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_Qvec", (PyCFunction)_wrap_gsl_linalg_QR_Qvec, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_Qvec(gsl_matrix const * QR, gsl_vector const * tau, gsl_vector * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38796,7 +38966,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_QTmat", (PyCFunction) _wrap_gsl_linalg_QR_QTmat, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_QTmat", (PyCFunction)_wrap_gsl_linalg_QR_QTmat, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_QTmat(gsl_matrix const * QR, gsl_vector const * tau, gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38806,7 +38976,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QR_unpack", (PyCFunction) _wrap_gsl_linalg_QR_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QR_unpack", (PyCFunction)_wrap_gsl_linalg_QR_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QR_unpack(gsl_matrix const * QR, gsl_vector const * tau, gsl_matrix * Q, gsl_matrix * R) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38817,7 +38987,7 @@ static PyMethodDef SwigMethods[] = {
 		"R: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_R_solve", (PyCFunction) _wrap_gsl_linalg_R_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_R_solve", (PyCFunction)_wrap_gsl_linalg_R_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_R_solve(gsl_matrix const * R, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38827,7 +38997,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_R_svx", (PyCFunction) _wrap_gsl_linalg_R_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_R_svx", (PyCFunction)_wrap_gsl_linalg_R_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_R_svx(gsl_matrix const * R, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38836,7 +39006,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_decomp", (PyCFunction) _wrap_gsl_linalg_QRPT_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_decomp", (PyCFunction)_wrap_gsl_linalg_QRPT_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_decomp(gsl_matrix * A, gsl_vector * tau, Permutation p, gsl_vector * norm) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38847,7 +39017,7 @@ static PyMethodDef SwigMethods[] = {
 		"norm: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_decomp2", (PyCFunction) _wrap_gsl_linalg_QRPT_decomp2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_decomp2", (PyCFunction)_wrap_gsl_linalg_QRPT_decomp2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_decomp2(gsl_matrix const * A, gsl_matrix * q, gsl_matrix * r, gsl_vector * tau, Permutation p, gsl_vector * norm) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38860,7 +39030,7 @@ static PyMethodDef SwigMethods[] = {
 		"norm: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_solve", (PyCFunction) _wrap_gsl_linalg_QRPT_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_solve", (PyCFunction)_wrap_gsl_linalg_QRPT_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_solve(gsl_matrix const * QR, gsl_vector const * tau, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38872,7 +39042,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_lssolve", (PyCFunction) _wrap_gsl_linalg_QRPT_lssolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_lssolve", (PyCFunction)_wrap_gsl_linalg_QRPT_lssolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_lssolve(gsl_matrix const * QR, gsl_vector const * tau, Permutation p, gsl_vector const * b, gsl_vector * x, gsl_vector * residual) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38885,7 +39055,7 @@ static PyMethodDef SwigMethods[] = {
 		"residual: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_lssolve2", (PyCFunction) _wrap_gsl_linalg_QRPT_lssolve2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_lssolve2", (PyCFunction)_wrap_gsl_linalg_QRPT_lssolve2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_lssolve2(gsl_matrix const * QR, gsl_vector const * tau, Permutation p, gsl_vector const * b, size_t const rank, gsl_vector * x, gsl_vector * residual) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38899,7 +39069,7 @@ static PyMethodDef SwigMethods[] = {
 		"residual: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_svx", (PyCFunction) _wrap_gsl_linalg_QRPT_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_svx", (PyCFunction)_wrap_gsl_linalg_QRPT_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_svx(gsl_matrix const * QR, gsl_vector const * tau, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38910,7 +39080,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_QRsolve", (PyCFunction) _wrap_gsl_linalg_QRPT_QRsolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_QRsolve", (PyCFunction)_wrap_gsl_linalg_QRPT_QRsolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_QRsolve(gsl_matrix const * Q, gsl_matrix const * R, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38922,7 +39092,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_Rsolve", (PyCFunction) _wrap_gsl_linalg_QRPT_Rsolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_Rsolve", (PyCFunction)_wrap_gsl_linalg_QRPT_Rsolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_Rsolve(gsl_matrix const * QR, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38933,7 +39103,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_Rsvx", (PyCFunction) _wrap_gsl_linalg_QRPT_Rsvx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_Rsvx", (PyCFunction)_wrap_gsl_linalg_QRPT_Rsvx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_Rsvx(gsl_matrix const * QR, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38943,7 +39113,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_update", (PyCFunction) _wrap_gsl_linalg_QRPT_update, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_update", (PyCFunction)_wrap_gsl_linalg_QRPT_update, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_update(gsl_matrix * Q, gsl_matrix * R, Permutation p, gsl_vector * u, gsl_vector const * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38955,7 +39125,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_rank", (PyCFunction) _wrap_gsl_linalg_QRPT_rank, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_rank", (PyCFunction)_wrap_gsl_linalg_QRPT_rank, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_rank(gsl_matrix const * QR, double const tol) -> size_t\n"
 		"\n"
 		"Parameters\n"
@@ -38964,7 +39134,7 @@ static PyMethodDef SwigMethods[] = {
 		"tol: double const\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_QRPT_rcond", (PyCFunction) _wrap_gsl_linalg_QRPT_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_QRPT_rcond", (PyCFunction)_wrap_gsl_linalg_QRPT_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_QRPT_rcond(gsl_matrix const * QR, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38974,7 +39144,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_decomp", (PyCFunction) _wrap_gsl_linalg_COD_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_decomp", (PyCFunction)_wrap_gsl_linalg_COD_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_decomp(gsl_matrix * A, gsl_vector * tau_Q, gsl_vector * tau_Z, Permutation p, size_t * rank, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -38987,7 +39157,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_decomp_e", (PyCFunction) _wrap_gsl_linalg_COD_decomp_e, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_decomp_e", (PyCFunction)_wrap_gsl_linalg_COD_decomp_e, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_decomp_e(gsl_matrix * A, gsl_vector * tau_Q, gsl_vector * tau_Z, Permutation p, double tol, size_t * rank, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39001,7 +39171,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_lssolve", (PyCFunction) _wrap_gsl_linalg_COD_lssolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_lssolve", (PyCFunction)_wrap_gsl_linalg_COD_lssolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_lssolve(gsl_matrix const * QRZT, gsl_vector const * tau_Q, gsl_vector const * tau_Z, Permutation perm, size_t const rank, gsl_vector const * b, gsl_vector * x, gsl_vector * residual) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39016,7 +39186,7 @@ static PyMethodDef SwigMethods[] = {
 		"residual: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_lssolve2", (PyCFunction) _wrap_gsl_linalg_COD_lssolve2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_lssolve2", (PyCFunction)_wrap_gsl_linalg_COD_lssolve2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_lssolve2(double const _lambda, gsl_matrix const * QRZT, gsl_vector const * tau_Q, gsl_vector const * tau_Z, Permutation perm, size_t const rank, gsl_vector const * b, gsl_vector * x, gsl_vector * residual, gsl_matrix * S, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39034,7 +39204,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_unpack", (PyCFunction) _wrap_gsl_linalg_COD_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_unpack", (PyCFunction)_wrap_gsl_linalg_COD_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_unpack(gsl_matrix const * QRZT, gsl_vector const * tau_Q, gsl_vector const * tau_Z, size_t const rank, gsl_matrix * Q, gsl_matrix * R, gsl_matrix * Z) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39048,7 +39218,7 @@ static PyMethodDef SwigMethods[] = {
 		"Z: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_COD_matZ", (PyCFunction) _wrap_gsl_linalg_COD_matZ, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_COD_matZ", (PyCFunction)_wrap_gsl_linalg_COD_matZ, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_COD_matZ(gsl_matrix const * QRZT, gsl_vector const * tau_Z, size_t const rank, gsl_matrix * A, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39060,7 +39230,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_decomp", (PyCFunction) _wrap_gsl_linalg_LQ_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_decomp", (PyCFunction)_wrap_gsl_linalg_LQ_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_decomp(gsl_matrix * A, gsl_vector * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39069,7 +39239,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_solve_T", (PyCFunction) _wrap_gsl_linalg_LQ_solve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_solve_T", (PyCFunction)_wrap_gsl_linalg_LQ_solve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_solve_T(gsl_matrix const * LQ, gsl_vector const * tau, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39080,7 +39250,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_svx_T", (PyCFunction) _wrap_gsl_linalg_LQ_svx_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_svx_T", (PyCFunction)_wrap_gsl_linalg_LQ_svx_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_svx_T(gsl_matrix const * LQ, gsl_vector const * tau, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39090,7 +39260,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_lssolve_T", (PyCFunction) _wrap_gsl_linalg_LQ_lssolve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_lssolve_T", (PyCFunction)_wrap_gsl_linalg_LQ_lssolve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_lssolve_T(gsl_matrix const * LQ, gsl_vector const * tau, gsl_vector const * b, gsl_vector * x, gsl_vector * residual) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39102,7 +39272,7 @@ static PyMethodDef SwigMethods[] = {
 		"residual: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_Lsolve_T", (PyCFunction) _wrap_gsl_linalg_LQ_Lsolve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_Lsolve_T", (PyCFunction)_wrap_gsl_linalg_LQ_Lsolve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_Lsolve_T(gsl_matrix const * LQ, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39112,7 +39282,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_Lsvx_T", (PyCFunction) _wrap_gsl_linalg_LQ_Lsvx_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_Lsvx_T", (PyCFunction)_wrap_gsl_linalg_LQ_Lsvx_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_Lsvx_T(gsl_matrix const * LQ, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39121,7 +39291,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_L_solve_T", (PyCFunction) _wrap_gsl_linalg_L_solve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_L_solve_T", (PyCFunction)_wrap_gsl_linalg_L_solve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_L_solve_T(gsl_matrix const * L, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39131,7 +39301,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_vecQ", (PyCFunction) _wrap_gsl_linalg_LQ_vecQ, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_vecQ", (PyCFunction)_wrap_gsl_linalg_LQ_vecQ, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_vecQ(gsl_matrix const * LQ, gsl_vector const * tau, gsl_vector * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39141,7 +39311,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_vecQT", (PyCFunction) _wrap_gsl_linalg_LQ_vecQT, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_vecQT", (PyCFunction)_wrap_gsl_linalg_LQ_vecQT, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_vecQT(gsl_matrix const * LQ, gsl_vector const * tau, gsl_vector * v) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39151,7 +39321,7 @@ static PyMethodDef SwigMethods[] = {
 		"v: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_unpack", (PyCFunction) _wrap_gsl_linalg_LQ_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_unpack", (PyCFunction)_wrap_gsl_linalg_LQ_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_unpack(gsl_matrix const * LQ, gsl_vector const * tau, gsl_matrix * Q, gsl_matrix * L) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39162,7 +39332,7 @@ static PyMethodDef SwigMethods[] = {
 		"L: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_update", (PyCFunction) _wrap_gsl_linalg_LQ_update, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_update", (PyCFunction)_wrap_gsl_linalg_LQ_update, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_update(gsl_matrix * Q, gsl_matrix * R, gsl_vector const * v, gsl_vector * w) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39173,7 +39343,7 @@ static PyMethodDef SwigMethods[] = {
 		"w: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_LQ_LQsolve", (PyCFunction) _wrap_gsl_linalg_LQ_LQsolve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_LQ_LQsolve", (PyCFunction)_wrap_gsl_linalg_LQ_LQsolve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_LQ_LQsolve(gsl_matrix * Q, gsl_matrix * L, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39184,7 +39354,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_decomp", (PyCFunction) _wrap_gsl_linalg_PTLQ_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_decomp", (PyCFunction)_wrap_gsl_linalg_PTLQ_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_decomp(gsl_matrix * A, gsl_vector * tau, Permutation p, gsl_vector * norm) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39195,7 +39365,7 @@ static PyMethodDef SwigMethods[] = {
 		"norm: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_decomp2", (PyCFunction) _wrap_gsl_linalg_PTLQ_decomp2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_decomp2", (PyCFunction)_wrap_gsl_linalg_PTLQ_decomp2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_decomp2(gsl_matrix const * A, gsl_matrix * q, gsl_matrix * r, gsl_vector * tau, Permutation p, gsl_vector * norm) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39208,7 +39378,7 @@ static PyMethodDef SwigMethods[] = {
 		"norm: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_solve_T", (PyCFunction) _wrap_gsl_linalg_PTLQ_solve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_solve_T", (PyCFunction)_wrap_gsl_linalg_PTLQ_solve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_solve_T(gsl_matrix const * QR, gsl_vector const * tau, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39220,7 +39390,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_svx_T", (PyCFunction) _wrap_gsl_linalg_PTLQ_svx_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_svx_T", (PyCFunction)_wrap_gsl_linalg_PTLQ_svx_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_svx_T(gsl_matrix const * LQ, gsl_vector const * tau, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39231,7 +39401,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_LQsolve_T", (PyCFunction) _wrap_gsl_linalg_PTLQ_LQsolve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_LQsolve_T", (PyCFunction)_wrap_gsl_linalg_PTLQ_LQsolve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_LQsolve_T(gsl_matrix const * Q, gsl_matrix const * L, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39243,7 +39413,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_Lsolve_T", (PyCFunction) _wrap_gsl_linalg_PTLQ_Lsolve_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_Lsolve_T", (PyCFunction)_wrap_gsl_linalg_PTLQ_Lsolve_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_Lsolve_T(gsl_matrix const * LQ, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39254,7 +39424,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_Lsvx_T", (PyCFunction) _wrap_gsl_linalg_PTLQ_Lsvx_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_Lsvx_T", (PyCFunction)_wrap_gsl_linalg_PTLQ_Lsvx_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_Lsvx_T(gsl_matrix const * LQ, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39264,7 +39434,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_PTLQ_update", (PyCFunction) _wrap_gsl_linalg_PTLQ_update, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_PTLQ_update", (PyCFunction)_wrap_gsl_linalg_PTLQ_update, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_PTLQ_update(gsl_matrix * Q, gsl_matrix * L, Permutation p, gsl_vector const * v, gsl_vector * w) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39276,7 +39446,7 @@ static PyMethodDef SwigMethods[] = {
 		"w: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_decomp", (PyCFunction) _wrap_gsl_linalg_cholesky_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_decomp", (PyCFunction)_wrap_gsl_linalg_cholesky_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_decomp(gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39284,7 +39454,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_decomp1", (PyCFunction) _wrap_gsl_linalg_cholesky_decomp1, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_decomp1", (PyCFunction)_wrap_gsl_linalg_cholesky_decomp1, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_decomp1(gsl_matrix * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39292,7 +39462,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_solve", (PyCFunction) _wrap_gsl_linalg_cholesky_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_solve", (PyCFunction)_wrap_gsl_linalg_cholesky_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_solve(gsl_matrix const * cholesky, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39302,7 +39472,17 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_svx", (PyCFunction) _wrap_gsl_linalg_cholesky_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_solve_mat", (PyCFunction)_wrap_gsl_linalg_cholesky_solve_mat, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"gsl_linalg_cholesky_solve_mat(gsl_matrix const * cholesky, gsl_matrix const * B, gsl_matrix * X) -> int\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"cholesky: gsl_matrix const *\n"
+		"B: gsl_matrix const *\n"
+		"X: gsl_matrix *\n"
+		"\n"
+		""},
+	 { "gsl_linalg_cholesky_svx", (PyCFunction)_wrap_gsl_linalg_cholesky_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_svx(gsl_matrix const * cholesky, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39311,7 +39491,16 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_invert", (PyCFunction) _wrap_gsl_linalg_cholesky_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_svx_mat", (PyCFunction)_wrap_gsl_linalg_cholesky_svx_mat, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
+		"gsl_linalg_cholesky_svx_mat(gsl_matrix const * cholesky, gsl_matrix * X) -> int\n"
+		"\n"
+		"Parameters\n"
+		"----------\n"
+		"cholesky: gsl_matrix const *\n"
+		"X: gsl_matrix *\n"
+		"\n"
+		""},
+	 { "gsl_linalg_cholesky_invert", (PyCFunction)_wrap_gsl_linalg_cholesky_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_invert(gsl_matrix * cholesky) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39319,7 +39508,7 @@ static PyMethodDef SwigMethods[] = {
 		"cholesky: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_decomp_unit", (PyCFunction) _wrap_gsl_linalg_cholesky_decomp_unit, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_decomp_unit", (PyCFunction)_wrap_gsl_linalg_cholesky_decomp_unit, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_decomp_unit(gsl_matrix * A, gsl_vector * D) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39328,7 +39517,7 @@ static PyMethodDef SwigMethods[] = {
 		"D: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_scale", (PyCFunction) _wrap_gsl_linalg_cholesky_scale, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_scale", (PyCFunction)_wrap_gsl_linalg_cholesky_scale, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_scale(gsl_matrix const * A, gsl_vector * S) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39337,7 +39526,7 @@ static PyMethodDef SwigMethods[] = {
 		"S: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_scale_apply", (PyCFunction) _wrap_gsl_linalg_cholesky_scale_apply, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_scale_apply", (PyCFunction)_wrap_gsl_linalg_cholesky_scale_apply, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_scale_apply(gsl_matrix * A, gsl_vector const * S) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39346,7 +39535,7 @@ static PyMethodDef SwigMethods[] = {
 		"S: gsl_vector const *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_decomp2", (PyCFunction) _wrap_gsl_linalg_cholesky_decomp2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_decomp2", (PyCFunction)_wrap_gsl_linalg_cholesky_decomp2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_decomp2(gsl_matrix * A, gsl_vector * S) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39355,7 +39544,7 @@ static PyMethodDef SwigMethods[] = {
 		"S: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_svx2", (PyCFunction) _wrap_gsl_linalg_cholesky_svx2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_svx2", (PyCFunction)_wrap_gsl_linalg_cholesky_svx2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_svx2(gsl_matrix const * LLT, gsl_vector const * S, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39365,7 +39554,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_solve2", (PyCFunction) _wrap_gsl_linalg_cholesky_solve2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_solve2", (PyCFunction)_wrap_gsl_linalg_cholesky_solve2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_solve2(gsl_matrix const * LLT, gsl_vector const * S, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39376,7 +39565,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_cholesky_rcond", (PyCFunction) _wrap_gsl_linalg_cholesky_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_cholesky_rcond", (PyCFunction)_wrap_gsl_linalg_cholesky_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_cholesky_rcond(gsl_matrix const * LLT, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39386,7 +39575,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_cholesky_decomp", (PyCFunction) _wrap_gsl_linalg_complex_cholesky_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_cholesky_decomp", (PyCFunction)_wrap_gsl_linalg_complex_cholesky_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_cholesky_decomp(gsl_matrix_complex * A) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39394,7 +39583,7 @@ static PyMethodDef SwigMethods[] = {
 		"A: gsl_matrix_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_cholesky_solve", (PyCFunction) _wrap_gsl_linalg_complex_cholesky_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_cholesky_solve", (PyCFunction)_wrap_gsl_linalg_complex_cholesky_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_cholesky_solve(gsl_matrix_complex const * cholesky, gsl_vector_complex const * b, gsl_vector_complex * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39404,7 +39593,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_complex_cholesky_svx", (PyCFunction) _wrap_gsl_linalg_complex_cholesky_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_complex_cholesky_svx", (PyCFunction)_wrap_gsl_linalg_complex_cholesky_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_complex_cholesky_svx(gsl_matrix_complex const * cholesky, gsl_vector_complex * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39413,7 +39602,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_decomp", (PyCFunction) _wrap_gsl_linalg_pcholesky_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_decomp", (PyCFunction)_wrap_gsl_linalg_pcholesky_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_decomp(gsl_matrix * A, Permutation p) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39422,7 +39611,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_solve", (PyCFunction) _wrap_gsl_linalg_pcholesky_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_solve", (PyCFunction)_wrap_gsl_linalg_pcholesky_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_solve(gsl_matrix const * LDLT, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39433,7 +39622,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_svx", (PyCFunction) _wrap_gsl_linalg_pcholesky_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_svx", (PyCFunction)_wrap_gsl_linalg_pcholesky_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_svx(gsl_matrix const * LDLT, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39443,7 +39632,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_decomp2", (PyCFunction) _wrap_gsl_linalg_pcholesky_decomp2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_decomp2", (PyCFunction)_wrap_gsl_linalg_pcholesky_decomp2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_decomp2(gsl_matrix * A, Permutation p, gsl_vector * S) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39453,7 +39642,7 @@ static PyMethodDef SwigMethods[] = {
 		"S: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_solve2", (PyCFunction) _wrap_gsl_linalg_pcholesky_solve2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_solve2", (PyCFunction)_wrap_gsl_linalg_pcholesky_solve2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_solve2(gsl_matrix const * LDLT, Permutation p, gsl_vector const * S, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39465,7 +39654,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_svx2", (PyCFunction) _wrap_gsl_linalg_pcholesky_svx2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_svx2", (PyCFunction)_wrap_gsl_linalg_pcholesky_svx2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_svx2(gsl_matrix const * LDLT, Permutation p, gsl_vector const * S, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39476,7 +39665,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_invert", (PyCFunction) _wrap_gsl_linalg_pcholesky_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_invert", (PyCFunction)_wrap_gsl_linalg_pcholesky_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_invert(gsl_matrix const * LDLT, Permutation p, gsl_matrix * Ainv) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39486,7 +39675,7 @@ static PyMethodDef SwigMethods[] = {
 		"Ainv: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_pcholesky_rcond", (PyCFunction) _wrap_gsl_linalg_pcholesky_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_pcholesky_rcond", (PyCFunction)_wrap_gsl_linalg_pcholesky_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_pcholesky_rcond(gsl_matrix const * LDLT, Permutation p, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39497,7 +39686,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_mcholesky_decomp", (PyCFunction) _wrap_gsl_linalg_mcholesky_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_mcholesky_decomp", (PyCFunction)_wrap_gsl_linalg_mcholesky_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_mcholesky_decomp(gsl_matrix * A, Permutation p, gsl_vector * E) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39507,7 +39696,7 @@ static PyMethodDef SwigMethods[] = {
 		"E: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_mcholesky_solve", (PyCFunction) _wrap_gsl_linalg_mcholesky_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_mcholesky_solve", (PyCFunction)_wrap_gsl_linalg_mcholesky_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_mcholesky_solve(gsl_matrix const * LDLT, Permutation p, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39518,7 +39707,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_mcholesky_svx", (PyCFunction) _wrap_gsl_linalg_mcholesky_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_mcholesky_svx", (PyCFunction)_wrap_gsl_linalg_mcholesky_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_mcholesky_svx(gsl_matrix const * LDLT, Permutation p, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39528,7 +39717,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_mcholesky_rcond", (PyCFunction) _wrap_gsl_linalg_mcholesky_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_mcholesky_rcond", (PyCFunction)_wrap_gsl_linalg_mcholesky_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_mcholesky_rcond(gsl_matrix const * LDLT, Permutation p, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39539,7 +39728,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_mcholesky_invert", (PyCFunction) _wrap_gsl_linalg_mcholesky_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_mcholesky_invert", (PyCFunction)_wrap_gsl_linalg_mcholesky_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_mcholesky_invert(gsl_matrix const * LDLT, Permutation p, gsl_matrix * Ainv) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39549,7 +39738,7 @@ static PyMethodDef SwigMethods[] = {
 		"Ainv: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_symmtd_decomp", (PyCFunction) _wrap_gsl_linalg_symmtd_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_symmtd_decomp", (PyCFunction)_wrap_gsl_linalg_symmtd_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_symmtd_decomp(gsl_matrix * A, gsl_vector * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39558,7 +39747,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_symmtd_unpack", (PyCFunction) _wrap_gsl_linalg_symmtd_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_symmtd_unpack", (PyCFunction)_wrap_gsl_linalg_symmtd_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_symmtd_unpack(gsl_matrix const * A, gsl_vector const * tau, gsl_matrix * Q, gsl_vector * diag, gsl_vector * subdiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39570,7 +39759,7 @@ static PyMethodDef SwigMethods[] = {
 		"subdiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_symmtd_unpack_T", (PyCFunction) _wrap_gsl_linalg_symmtd_unpack_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_symmtd_unpack_T", (PyCFunction)_wrap_gsl_linalg_symmtd_unpack_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_symmtd_unpack_T(gsl_matrix const * A, gsl_vector * diag, gsl_vector * subdiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39580,7 +39769,7 @@ static PyMethodDef SwigMethods[] = {
 		"subdiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hermtd_decomp", (PyCFunction) _wrap_gsl_linalg_hermtd_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hermtd_decomp", (PyCFunction)_wrap_gsl_linalg_hermtd_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hermtd_decomp(gsl_matrix_complex * A, gsl_vector_complex * tau) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39589,7 +39778,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau: gsl_vector_complex *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hermtd_unpack", (PyCFunction) _wrap_gsl_linalg_hermtd_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hermtd_unpack", (PyCFunction)_wrap_gsl_linalg_hermtd_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hermtd_unpack(gsl_matrix_complex const * A, gsl_vector_complex const * tau, gsl_matrix_complex * U, gsl_vector * diag, gsl_vector * sudiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39601,7 +39790,7 @@ static PyMethodDef SwigMethods[] = {
 		"sudiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_hermtd_unpack_T", (PyCFunction) _wrap_gsl_linalg_hermtd_unpack_T, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_hermtd_unpack_T", (PyCFunction)_wrap_gsl_linalg_hermtd_unpack_T, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_hermtd_unpack_T(gsl_matrix_complex const * A, gsl_vector * diag, gsl_vector * subdiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39611,7 +39800,7 @@ static PyMethodDef SwigMethods[] = {
 		"subdiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_HH_solve", (PyCFunction) _wrap_gsl_linalg_HH_solve, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_HH_solve", (PyCFunction)_wrap_gsl_linalg_HH_solve, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_HH_solve(gsl_matrix * A, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39621,7 +39810,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_HH_svx", (PyCFunction) _wrap_gsl_linalg_HH_svx, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_HH_svx", (PyCFunction)_wrap_gsl_linalg_HH_svx, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_HH_svx(gsl_matrix * A, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39630,7 +39819,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_solve_symm_tridiag", (PyCFunction) _wrap_gsl_linalg_solve_symm_tridiag, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_solve_symm_tridiag", (PyCFunction)_wrap_gsl_linalg_solve_symm_tridiag, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_solve_symm_tridiag(gsl_vector const * diag, gsl_vector const * offdiag, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39641,7 +39830,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_solve_tridiag", (PyCFunction) _wrap_gsl_linalg_solve_tridiag, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_solve_tridiag", (PyCFunction)_wrap_gsl_linalg_solve_tridiag, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_solve_tridiag(gsl_vector const * diag, gsl_vector const * abovediag, gsl_vector const * belowdiag, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39653,7 +39842,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_solve_symm_cyc_tridiag", (PyCFunction) _wrap_gsl_linalg_solve_symm_cyc_tridiag, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_solve_symm_cyc_tridiag", (PyCFunction)_wrap_gsl_linalg_solve_symm_cyc_tridiag, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_solve_symm_cyc_tridiag(gsl_vector const * diag, gsl_vector const * offdiag, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39664,7 +39853,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_solve_cyc_tridiag", (PyCFunction) _wrap_gsl_linalg_solve_cyc_tridiag, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_solve_cyc_tridiag", (PyCFunction)_wrap_gsl_linalg_solve_cyc_tridiag, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_solve_cyc_tridiag(gsl_vector const * diag, gsl_vector const * abovediag, gsl_vector const * belowdiag, gsl_vector const * b, gsl_vector * x) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39676,7 +39865,7 @@ static PyMethodDef SwigMethods[] = {
 		"x: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_bidiag_decomp", (PyCFunction) _wrap_gsl_linalg_bidiag_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_bidiag_decomp", (PyCFunction)_wrap_gsl_linalg_bidiag_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_bidiag_decomp(gsl_matrix * A, gsl_vector * tau_U, gsl_vector * tau_V) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39686,7 +39875,7 @@ static PyMethodDef SwigMethods[] = {
 		"tau_V: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_bidiag_unpack", (PyCFunction) _wrap_gsl_linalg_bidiag_unpack, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_bidiag_unpack", (PyCFunction)_wrap_gsl_linalg_bidiag_unpack, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_bidiag_unpack(gsl_matrix const * A, gsl_vector const * tau_U, gsl_matrix * U, gsl_vector const * tau_V, gsl_matrix * V, gsl_vector * diag, gsl_vector * superdiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39700,7 +39889,7 @@ static PyMethodDef SwigMethods[] = {
 		"superdiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_bidiag_unpack2", (PyCFunction) _wrap_gsl_linalg_bidiag_unpack2, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_bidiag_unpack2", (PyCFunction)_wrap_gsl_linalg_bidiag_unpack2, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_bidiag_unpack2(gsl_matrix * A, gsl_vector * tau_U, gsl_vector * tau_V, gsl_matrix * V) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39711,7 +39900,7 @@ static PyMethodDef SwigMethods[] = {
 		"V: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_bidiag_unpack_B", (PyCFunction) _wrap_gsl_linalg_bidiag_unpack_B, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_bidiag_unpack_B", (PyCFunction)_wrap_gsl_linalg_bidiag_unpack_B, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_bidiag_unpack_B(gsl_matrix const * A, gsl_vector * diag, gsl_vector * superdiag) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39721,7 +39910,7 @@ static PyMethodDef SwigMethods[] = {
 		"superdiag: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_balance_matrix", (PyCFunction) _wrap_gsl_linalg_balance_matrix, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_balance_matrix", (PyCFunction)_wrap_gsl_linalg_balance_matrix, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_balance_matrix(gsl_matrix * A, gsl_vector * D) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39730,7 +39919,7 @@ static PyMethodDef SwigMethods[] = {
 		"D: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_balance_accum", (PyCFunction) _wrap_gsl_linalg_balance_accum, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_balance_accum", (PyCFunction)_wrap_gsl_linalg_balance_accum, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_balance_accum(gsl_matrix * A, gsl_vector * D) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39739,7 +39928,7 @@ static PyMethodDef SwigMethods[] = {
 		"D: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_balance_columns", (PyCFunction) _wrap_gsl_linalg_balance_columns, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_balance_columns", (PyCFunction)_wrap_gsl_linalg_balance_columns, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_balance_columns(gsl_matrix * A, gsl_vector * D) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39748,7 +39937,7 @@ static PyMethodDef SwigMethods[] = {
 		"D: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_upper_rcond", (PyCFunction) _wrap_gsl_linalg_tri_upper_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_upper_rcond", (PyCFunction)_wrap_gsl_linalg_tri_upper_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_upper_rcond(gsl_matrix const * A, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39758,7 +39947,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_lower_rcond", (PyCFunction) _wrap_gsl_linalg_tri_lower_rcond, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_lower_rcond", (PyCFunction)_wrap_gsl_linalg_tri_lower_rcond, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_lower_rcond(gsl_matrix const * A, double * rcond, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39768,7 +39957,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_invnorm1", (PyCFunction) _wrap_gsl_linalg_invnorm1, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_invnorm1", (PyCFunction)_wrap_gsl_linalg_invnorm1, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_invnorm1(size_t const N, int (*)(CBLAS_TRANSPOSE_t,gsl_vector *,void *) Ainvx, void * params, double * Ainvnorm, gsl_vector * work) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39780,7 +39969,7 @@ static PyMethodDef SwigMethods[] = {
 		"work: gsl_vector *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_upper_invert", (PyCFunction) _wrap_gsl_linalg_tri_upper_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_upper_invert", (PyCFunction)_wrap_gsl_linalg_tri_upper_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_upper_invert(gsl_matrix * T) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39788,7 +39977,7 @@ static PyMethodDef SwigMethods[] = {
 		"T: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_lower_invert", (PyCFunction) _wrap_gsl_linalg_tri_lower_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_lower_invert", (PyCFunction)_wrap_gsl_linalg_tri_lower_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_lower_invert(gsl_matrix * T) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39796,7 +39985,7 @@ static PyMethodDef SwigMethods[] = {
 		"T: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_upper_unit_invert", (PyCFunction) _wrap_gsl_linalg_tri_upper_unit_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_upper_unit_invert", (PyCFunction)_wrap_gsl_linalg_tri_upper_unit_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_upper_unit_invert(gsl_matrix * T) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39804,7 +39993,7 @@ static PyMethodDef SwigMethods[] = {
 		"T: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"gsl_linalg_tri_lower_unit_invert", (PyCFunction) _wrap_gsl_linalg_tri_lower_unit_invert, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "gsl_linalg_tri_lower_unit_invert", (PyCFunction)_wrap_gsl_linalg_tri_lower_unit_invert, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"gsl_linalg_tri_lower_unit_invert(gsl_matrix * T) -> int\n"
 		"\n"
 		"Parameters\n"
@@ -39812,7 +40001,7 @@ static PyMethodDef SwigMethods[] = {
 		"T: gsl_matrix *\n"
 		"\n"
 		""},
-	 { (char *)"pygsl_linalg_LU_decomp", (PyCFunction) _wrap_pygsl_linalg_LU_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "pygsl_linalg_LU_decomp", (PyCFunction)_wrap_pygsl_linalg_LU_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"pygsl_linalg_LU_decomp(gsl_matrix * A, Permutation p) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -39821,7 +40010,7 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"pygsl_linalg_complex_LU_decomp", (PyCFunction) _wrap_pygsl_linalg_complex_LU_decomp, METH_VARARGS | METH_KEYWORDS, (char *)"\n"
+	 { "pygsl_linalg_complex_LU_decomp", (PyCFunction)_wrap_pygsl_linalg_complex_LU_decomp, METH_VARARGS|METH_KEYWORDS, (char *)"\n"
 		"pygsl_linalg_complex_LU_decomp(gsl_matrix_complex * A, Permutation p) -> gsl_error_flag_drop\n"
 		"\n"
 		"Parameters\n"
@@ -39830,366 +40019,366 @@ static PyMethodDef SwigMethods[] = {
 		"p: gsl_permutation *\n"
 		"\n"
 		""},
-	 { (char *)"new_Combination", (PyCFunction) _wrap_new_Combination, METH_VARARGS | METH_KEYWORDS, (char *)"bla blamore blah blah"},
-	 { (char *)"delete_Combination", _wrap_delete_Combination, METH_VARARGS, (char *)"delete_Combination(Combination self)"},
-	 { (char *)"Combination___getitem__", (PyCFunction) _wrap_Combination___getitem__, METH_VARARGS | METH_KEYWORDS, (char *)"Combination___getitem__(Combination self, size_t const i) -> size_t"},
-	 { (char *)"Combination_k", _wrap_Combination_k, METH_VARARGS, (char *)"Combination_k(Combination self) -> size_t"},
-	 { (char *)"Combination_n", _wrap_Combination_n, METH_VARARGS, (char *)"Combination_n(Combination self) -> size_t"},
-	 { (char *)"Combination_init_first", _wrap_Combination_init_first, METH_VARARGS, (char *)"Combination_init_first(Combination self)"},
-	 { (char *)"Combination_init_last", _wrap_Combination_init_last, METH_VARARGS, (char *)"Combination_init_last(Combination self)"},
-	 { (char *)"Combination_valid", _wrap_Combination_valid, METH_VARARGS, (char *)"Combination_valid(Combination self) -> int"},
-	 { (char *)"Combination_next", _wrap_Combination_next, METH_VARARGS, (char *)"Combination_next(Combination self) -> int"},
-	 { (char *)"Combination_prev", _wrap_Combination_prev, METH_VARARGS, (char *)"Combination_prev(Combination self) -> int"},
-	 { (char *)"Combination_tolist", _wrap_Combination_tolist, METH_VARARGS, (char *)"Combination_tolist(Combination self) -> PyObject *"},
-	 { (char *)"Combination_toarray", _wrap_Combination_toarray, METH_VARARGS, (char *)"Combination_toarray(Combination self) -> PyObject *"},
-	 { (char *)"Combination_swigregister", Combination_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_log1p", (PyCFunction) _wrap_gsl_log1p, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_log1p(double const x) -> double"},
-	 { (char *)"gsl_expm1", (PyCFunction) _wrap_gsl_expm1, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_expm1(double const x) -> double"},
-	 { (char *)"gsl_hypot", (PyCFunction) _wrap_gsl_hypot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_hypot(double const x, double const y) -> double"},
-	 { (char *)"gsl_hypot3", (PyCFunction) _wrap_gsl_hypot3, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_hypot3(double const x, double const y, double const z) -> double"},
-	 { (char *)"gsl_acosh", (PyCFunction) _wrap_gsl_acosh, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_acosh(double const x) -> double"},
-	 { (char *)"gsl_asinh", (PyCFunction) _wrap_gsl_asinh, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_asinh(double const x) -> double"},
-	 { (char *)"gsl_atanh", (PyCFunction) _wrap_gsl_atanh, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_atanh(double const x) -> double"},
-	 { (char *)"gsl_isnan", (PyCFunction) _wrap_gsl_isnan, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_isnan(double const x) -> int"},
-	 { (char *)"gsl_isinf", (PyCFunction) _wrap_gsl_isinf, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_isinf(double const x) -> int"},
-	 { (char *)"gsl_finite", (PyCFunction) _wrap_gsl_finite, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_finite(double const x) -> int"},
-	 { (char *)"gsl_nan", _wrap_gsl_nan, METH_VARARGS, (char *)"gsl_nan() -> double"},
-	 { (char *)"gsl_posinf", _wrap_gsl_posinf, METH_VARARGS, (char *)"gsl_posinf() -> double"},
-	 { (char *)"gsl_neginf", _wrap_gsl_neginf, METH_VARARGS, (char *)"gsl_neginf() -> double"},
-	 { (char *)"gsl_fdiv", (PyCFunction) _wrap_gsl_fdiv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_fdiv(double const x, double const y) -> double"},
-	 { (char *)"gsl_coerce_double", (PyCFunction) _wrap_gsl_coerce_double, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_coerce_double(double const x) -> double"},
-	 { (char *)"gsl_coerce_float", (PyCFunction) _wrap_gsl_coerce_float, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_coerce_float(float const x) -> float"},
-	 { (char *)"gsl_coerce_long_double", (PyCFunction) _wrap_gsl_coerce_long_double, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_coerce_long_double(long double const x) -> long double"},
-	 { (char *)"gsl_ldexp", (PyCFunction) _wrap_gsl_ldexp, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_ldexp(double const x, int const e) -> double"},
-	 { (char *)"gsl_frexp", (PyCFunction) _wrap_gsl_frexp, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_frexp(double const x, int * e) -> double"},
-	 { (char *)"gsl_fcmp", (PyCFunction) _wrap_gsl_fcmp, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_fcmp(double const x1, double const x2, double const epsilon) -> int"},
-	 { (char *)"gsl_blas_sdsdot", (PyCFunction) _wrap_gsl_blas_sdsdot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sdsdot(float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, float * result) -> int"},
-	 { (char *)"gsl_blas_dsdot", (PyCFunction) _wrap_gsl_blas_dsdot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsdot(gsl_vector_float const * X, gsl_vector_float const * Y) -> int"},
-	 { (char *)"gsl_blas_sdot", (PyCFunction) _wrap_gsl_blas_sdot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sdot(gsl_vector_float const * X, gsl_vector_float const * Y, float * result) -> int"},
-	 { (char *)"gsl_blas_ddot", (PyCFunction) _wrap_gsl_blas_ddot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ddot(gsl_vector const * X, gsl_vector const * Y) -> int"},
-	 { (char *)"gsl_blas_cdotu", (PyCFunction) _wrap_gsl_blas_cdotu, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cdotu(gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_complex_float * dotu) -> int"},
-	 { (char *)"gsl_blas_cdotc", (PyCFunction) _wrap_gsl_blas_cdotc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cdotc(gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_complex_float * dotc) -> int"},
-	 { (char *)"gsl_blas_zdotu", (PyCFunction) _wrap_gsl_blas_zdotu, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zdotu(gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_complex * dotu) -> int"},
-	 { (char *)"gsl_blas_zdotc", (PyCFunction) _wrap_gsl_blas_zdotc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zdotc(gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_complex * dotc) -> int"},
-	 { (char *)"gsl_blas_snrm2", (PyCFunction) _wrap_gsl_blas_snrm2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_snrm2(gsl_vector_float const * X) -> float"},
-	 { (char *)"gsl_blas_sasum", (PyCFunction) _wrap_gsl_blas_sasum, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sasum(gsl_vector_float const * X) -> float"},
-	 { (char *)"gsl_blas_dnrm2", (PyCFunction) _wrap_gsl_blas_dnrm2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dnrm2(gsl_vector const * X) -> double"},
-	 { (char *)"gsl_blas_dasum", (PyCFunction) _wrap_gsl_blas_dasum, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dasum(gsl_vector const * X) -> double"},
-	 { (char *)"gsl_blas_scnrm2", (PyCFunction) _wrap_gsl_blas_scnrm2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_scnrm2(gsl_vector_complex_float const * X) -> float"},
-	 { (char *)"gsl_blas_scasum", (PyCFunction) _wrap_gsl_blas_scasum, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_scasum(gsl_vector_complex_float const * X) -> float"},
-	 { (char *)"gsl_blas_dznrm2", (PyCFunction) _wrap_gsl_blas_dznrm2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dznrm2(gsl_vector_complex const * X) -> double"},
-	 { (char *)"gsl_blas_dzasum", (PyCFunction) _wrap_gsl_blas_dzasum, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dzasum(gsl_vector_complex const * X) -> double"},
-	 { (char *)"gsl_blas_isamax", (PyCFunction) _wrap_gsl_blas_isamax, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_isamax(gsl_vector_float const * X) -> CBLAS_INDEX_t"},
-	 { (char *)"gsl_blas_idamax", (PyCFunction) _wrap_gsl_blas_idamax, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_idamax(gsl_vector const * X) -> CBLAS_INDEX_t"},
-	 { (char *)"gsl_blas_icamax", (PyCFunction) _wrap_gsl_blas_icamax, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_icamax(gsl_vector_complex_float const * X) -> CBLAS_INDEX_t"},
-	 { (char *)"gsl_blas_izamax", (PyCFunction) _wrap_gsl_blas_izamax, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_izamax(gsl_vector_complex const * X) -> CBLAS_INDEX_t"},
-	 { (char *)"gsl_blas_sswap", (PyCFunction) _wrap_gsl_blas_sswap, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sswap(gsl_vector_float * X, gsl_vector_float * Y) -> int"},
-	 { (char *)"gsl_blas_scopy", (PyCFunction) _wrap_gsl_blas_scopy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_scopy(gsl_vector_float const * X, gsl_vector_float * Y) -> int"},
-	 { (char *)"gsl_blas_saxpy", (PyCFunction) _wrap_gsl_blas_saxpy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_saxpy(float alpha, gsl_vector_float const * X, gsl_vector_float * Y) -> int"},
-	 { (char *)"gsl_blas_dswap", (PyCFunction) _wrap_gsl_blas_dswap, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dswap(gsl_vector * X, gsl_vector * Y) -> int"},
-	 { (char *)"gsl_blas_dcopy", (PyCFunction) _wrap_gsl_blas_dcopy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dcopy(gsl_vector const * X, gsl_vector * Y) -> int"},
-	 { (char *)"gsl_blas_daxpy", (PyCFunction) _wrap_gsl_blas_daxpy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_daxpy(double alpha, gsl_vector const * X, gsl_vector * Y) -> int"},
-	 { (char *)"gsl_blas_cswap", (PyCFunction) _wrap_gsl_blas_cswap, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cswap(gsl_vector_complex_float * X, gsl_vector_complex_float * Y) -> int"},
-	 { (char *)"gsl_blas_ccopy", (PyCFunction) _wrap_gsl_blas_ccopy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ccopy(gsl_vector_complex_float const * X, gsl_vector_complex_float * Y) -> int"},
-	 { (char *)"gsl_blas_caxpy", (PyCFunction) _wrap_gsl_blas_caxpy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_caxpy(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float * Y) -> int"},
-	 { (char *)"gsl_blas_zswap", (PyCFunction) _wrap_gsl_blas_zswap, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zswap(gsl_vector_complex * X, gsl_vector_complex * Y) -> int"},
-	 { (char *)"gsl_blas_zcopy", (PyCFunction) _wrap_gsl_blas_zcopy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zcopy(gsl_vector_complex const * X, gsl_vector_complex * Y) -> int"},
-	 { (char *)"gsl_blas_zaxpy", (PyCFunction) _wrap_gsl_blas_zaxpy, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zaxpy(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex * Y) -> int"},
-	 { (char *)"gsl_blas_srotg", (PyCFunction) _wrap_gsl_blas_srotg, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_srotg(float [] a, float [] b, float [] c, float [] s) -> int"},
-	 { (char *)"gsl_blas_srotmg", (PyCFunction) _wrap_gsl_blas_srotmg, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_srotmg(float [] d1, float [] d2, float [] b1, float b2, float [] P) -> int"},
-	 { (char *)"gsl_blas_srot", (PyCFunction) _wrap_gsl_blas_srot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_srot(gsl_vector_float * X, gsl_vector_float * Y, float c, float s) -> int"},
-	 { (char *)"gsl_blas_srotm", (PyCFunction) _wrap_gsl_blas_srotm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_srotm(gsl_vector_float * X, gsl_vector_float * Y, float const [] P) -> int"},
-	 { (char *)"gsl_blas_drotg", (PyCFunction) _wrap_gsl_blas_drotg, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_drotg(double [] a, double [] b, double [] c, double [] s) -> int"},
-	 { (char *)"gsl_blas_drotmg", (PyCFunction) _wrap_gsl_blas_drotmg, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_drotmg(double [] d1, double [] d2, double [] b1, double b2, double [] P) -> int"},
-	 { (char *)"gsl_blas_drot", (PyCFunction) _wrap_gsl_blas_drot, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_drot(gsl_vector * X, gsl_vector * Y, double const c, double const s) -> int"},
-	 { (char *)"gsl_blas_drotm", (PyCFunction) _wrap_gsl_blas_drotm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_drotm(gsl_vector * X, gsl_vector * Y, double const [] P) -> int"},
-	 { (char *)"gsl_blas_sscal", (PyCFunction) _wrap_gsl_blas_sscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sscal(float alpha, gsl_vector_float * X)"},
-	 { (char *)"gsl_blas_dscal", (PyCFunction) _wrap_gsl_blas_dscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dscal(double alpha, gsl_vector * X)"},
-	 { (char *)"gsl_blas_cscal", (PyCFunction) _wrap_gsl_blas_cscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cscal(gsl_complex_float const alpha, gsl_vector_complex_float * X)"},
-	 { (char *)"gsl_blas_zscal", (PyCFunction) _wrap_gsl_blas_zscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zscal(gsl_complex const alpha, gsl_vector_complex * X)"},
-	 { (char *)"gsl_blas_csscal", (PyCFunction) _wrap_gsl_blas_csscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_csscal(float alpha, gsl_vector_complex_float * X)"},
-	 { (char *)"gsl_blas_zdscal", (PyCFunction) _wrap_gsl_blas_zdscal, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zdscal(double alpha, gsl_vector_complex * X)"},
-	 { (char *)"gsl_blas_sgemv", (PyCFunction) _wrap_gsl_blas_sgemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sgemv(CBLAS_TRANSPOSE_t TransA, float alpha, gsl_matrix_float const * A, gsl_vector_float const * X, float beta, gsl_vector_float * Y) -> int"},
-	 { (char *)"gsl_blas_strmv", (PyCFunction) _wrap_gsl_blas_strmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_strmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_float const * A, gsl_vector_float * X) -> int"},
-	 { (char *)"gsl_blas_strsv", (PyCFunction) _wrap_gsl_blas_strsv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_strsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_float const * A, gsl_vector_float * X) -> int"},
-	 { (char *)"gsl_blas_dgemv", (PyCFunction) _wrap_gsl_blas_dgemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dgemv(CBLAS_TRANSPOSE_t TransA, double alpha, gsl_matrix const * A, gsl_vector const * X, double beta, gsl_vector * Y) -> int"},
-	 { (char *)"gsl_blas_dtrmv", (PyCFunction) _wrap_gsl_blas_dtrmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dtrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix const * A, gsl_vector * X) -> int"},
-	 { (char *)"gsl_blas_dtrsv", (PyCFunction) _wrap_gsl_blas_dtrsv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dtrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix const * A, gsl_vector * X) -> int"},
-	 { (char *)"gsl_blas_cgemv", (PyCFunction) _wrap_gsl_blas_cgemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cgemv(CBLAS_TRANSPOSE_t TransA, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_vector_complex_float const * X, gsl_complex_float const beta, gsl_vector_complex_float * Y) -> int"},
-	 { (char *)"gsl_blas_ctrmv", (PyCFunction) _wrap_gsl_blas_ctrmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ctrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex_float const * A, gsl_vector_complex_float * X) -> int"},
-	 { (char *)"gsl_blas_ctrsv", (PyCFunction) _wrap_gsl_blas_ctrsv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ctrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex_float const * A, gsl_vector_complex_float * X) -> int"},
-	 { (char *)"gsl_blas_zgemv", (PyCFunction) _wrap_gsl_blas_zgemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zgemv(CBLAS_TRANSPOSE_t TransA, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_vector_complex const * X, gsl_complex const beta, gsl_vector_complex * Y) -> int"},
-	 { (char *)"gsl_blas_ztrmv", (PyCFunction) _wrap_gsl_blas_ztrmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ztrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex const * A, gsl_vector_complex * X) -> int"},
-	 { (char *)"gsl_blas_ztrsv", (PyCFunction) _wrap_gsl_blas_ztrsv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ztrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex const * A, gsl_vector_complex * X) -> int"},
-	 { (char *)"gsl_blas_ssymv", (PyCFunction) _wrap_gsl_blas_ssymv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssymv(CBLAS_UPLO_t Uplo, float alpha, gsl_matrix_float const * A, gsl_vector_float const * X, float beta, gsl_vector_float * Y) -> int"},
-	 { (char *)"gsl_blas_sger", (PyCFunction) _wrap_gsl_blas_sger, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sger(float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, gsl_matrix_float * A) -> int"},
-	 { (char *)"gsl_blas_ssyr", (PyCFunction) _wrap_gsl_blas_ssyr, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssyr(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_float const * X, gsl_matrix_float * A) -> int"},
-	 { (char *)"gsl_blas_ssyr2", (PyCFunction) _wrap_gsl_blas_ssyr2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssyr2(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, gsl_matrix_float * A) -> int"},
-	 { (char *)"gsl_blas_dsymv", (PyCFunction) _wrap_gsl_blas_dsymv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsymv(CBLAS_UPLO_t Uplo, double alpha, gsl_matrix const * A, gsl_vector const * X, double beta, gsl_vector * Y) -> int"},
-	 { (char *)"gsl_blas_dger", (PyCFunction) _wrap_gsl_blas_dger, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dger(double alpha, gsl_vector const * X, gsl_vector const * Y, gsl_matrix * A) -> int"},
-	 { (char *)"gsl_blas_dsyr", (PyCFunction) _wrap_gsl_blas_dsyr, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsyr(CBLAS_UPLO_t Uplo, double alpha, gsl_vector const * X, gsl_matrix * A) -> int"},
-	 { (char *)"gsl_blas_dsyr2", (PyCFunction) _wrap_gsl_blas_dsyr2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsyr2(CBLAS_UPLO_t Uplo, double alpha, gsl_vector const * X, gsl_vector const * Y, gsl_matrix * A) -> int"},
-	 { (char *)"gsl_blas_chemv", (PyCFunction) _wrap_gsl_blas_chemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_chemv(CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_vector_complex_float const * X, gsl_complex_float const beta, gsl_vector_complex_float * Y) -> int"},
-	 { (char *)"gsl_blas_cgeru", (PyCFunction) _wrap_gsl_blas_cgeru, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cgeru(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
-	 { (char *)"gsl_blas_cgerc", (PyCFunction) _wrap_gsl_blas_cgerc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cgerc(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
-	 { (char *)"gsl_blas_cher", (PyCFunction) _wrap_gsl_blas_cher, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cher(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_complex_float const * X, gsl_matrix_complex_float * A) -> int"},
-	 { (char *)"gsl_blas_cher2", (PyCFunction) _wrap_gsl_blas_cher2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cher2(CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
-	 { (char *)"gsl_blas_zhemv", (PyCFunction) _wrap_gsl_blas_zhemv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zhemv(CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_vector_complex const * X, gsl_complex const beta, gsl_vector_complex * Y) -> int"},
-	 { (char *)"gsl_blas_zgeru", (PyCFunction) _wrap_gsl_blas_zgeru, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zgeru(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
-	 { (char *)"gsl_blas_zgerc", (PyCFunction) _wrap_gsl_blas_zgerc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zgerc(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
-	 { (char *)"gsl_blas_zher", (PyCFunction) _wrap_gsl_blas_zher, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zher(CBLAS_UPLO_t Uplo, double alpha, gsl_vector_complex const * X, gsl_matrix_complex * A) -> int"},
-	 { (char *)"gsl_blas_zher2", (PyCFunction) _wrap_gsl_blas_zher2, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zher2(CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
-	 { (char *)"gsl_blas_sgemm", (PyCFunction) _wrap_gsl_blas_sgemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_sgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
-	 { (char *)"gsl_blas_ssymm", (PyCFunction) _wrap_gsl_blas_ssymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
-	 { (char *)"gsl_blas_ssyrk", (PyCFunction) _wrap_gsl_blas_ssyrk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_float const * A, float beta, gsl_matrix_float * C) -> int"},
-	 { (char *)"gsl_blas_ssyr2k", (PyCFunction) _wrap_gsl_blas_ssyr2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ssyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
-	 { (char *)"gsl_blas_strmm", (PyCFunction) _wrap_gsl_blas_strmm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_strmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, float alpha, gsl_matrix_float const * A, gsl_matrix_float * B) -> int"},
-	 { (char *)"gsl_blas_strsm", (PyCFunction) _wrap_gsl_blas_strsm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_strsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, float alpha, gsl_matrix_float const * A, gsl_matrix_float * B) -> int"},
-	 { (char *)"gsl_blas_dgemm", (PyCFunction) _wrap_gsl_blas_dgemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
-	 { (char *)"gsl_blas_dsymm", (PyCFunction) _wrap_gsl_blas_dsymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
-	 { (char *)"gsl_blas_dsyrk", (PyCFunction) _wrap_gsl_blas_dsyrk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix const * A, double beta, gsl_matrix * C) -> int"},
-	 { (char *)"gsl_blas_dsyr2k", (PyCFunction) _wrap_gsl_blas_dsyr2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dsyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
-	 { (char *)"gsl_blas_dtrmm", (PyCFunction) _wrap_gsl_blas_dtrmm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dtrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, double alpha, gsl_matrix const * A, gsl_matrix * B) -> int"},
-	 { (char *)"gsl_blas_dtrsm", (PyCFunction) _wrap_gsl_blas_dtrsm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_dtrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, double alpha, gsl_matrix const * A, gsl_matrix * B) -> int"},
-	 { (char *)"gsl_blas_cgemm", (PyCFunction) _wrap_gsl_blas_cgemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_csymm", (PyCFunction) _wrap_gsl_blas_csymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_csymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_csyrk", (PyCFunction) _wrap_gsl_blas_csyrk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_csyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_csyr2k", (PyCFunction) _wrap_gsl_blas_csyr2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_csyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_ctrmm", (PyCFunction) _wrap_gsl_blas_ctrmm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ctrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float * B) -> int"},
-	 { (char *)"gsl_blas_ctrsm", (PyCFunction) _wrap_gsl_blas_ctrsm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ctrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float * B) -> int"},
-	 { (char *)"gsl_blas_zgemm", (PyCFunction) _wrap_gsl_blas_zgemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_zsymm", (PyCFunction) _wrap_gsl_blas_zsymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zsymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_zsyrk", (PyCFunction) _wrap_gsl_blas_zsyrk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zsyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_zsyr2k", (PyCFunction) _wrap_gsl_blas_zsyr2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zsyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_ztrmm", (PyCFunction) _wrap_gsl_blas_ztrmm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ztrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex * B) -> int"},
-	 { (char *)"gsl_blas_ztrsm", (PyCFunction) _wrap_gsl_blas_ztrsm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_ztrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex * B) -> int"},
-	 { (char *)"gsl_blas_chemm", (PyCFunction) _wrap_gsl_blas_chemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_chemm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_cherk", (PyCFunction) _wrap_gsl_blas_cherk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cherk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_complex_float const * A, float beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_cher2k", (PyCFunction) _wrap_gsl_blas_cher2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_cher2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, float beta, gsl_matrix_complex_float * C) -> int"},
-	 { (char *)"gsl_blas_zhemm", (PyCFunction) _wrap_gsl_blas_zhemm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zhemm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_zherk", (PyCFunction) _wrap_gsl_blas_zherk, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zherk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix_complex const * A, double beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"gsl_blas_zher2k", (PyCFunction) _wrap_gsl_blas_zher2k, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_blas_zher2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, double beta, gsl_matrix_complex * C) -> int"},
-	 { (char *)"new_gsl_eigen_symm_workspace", (PyCFunction) _wrap_new_gsl_eigen_symm_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_symm_workspace(size_t const n) -> gsl_eigen_symm_workspace"},
-	 { (char *)"delete_gsl_eigen_symm_workspace", _wrap_delete_gsl_eigen_symm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_symm_workspace(gsl_eigen_symm_workspace self)"},
-	 { (char *)"gsl_eigen_symm_workspace_size_get", _wrap_gsl_eigen_symm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_size_get(gsl_eigen_symm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_symm_workspace_d_get", _wrap_gsl_eigen_symm_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_d_get(gsl_eigen_symm_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symm_workspace_sd_get", _wrap_gsl_eigen_symm_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_sd_get(gsl_eigen_symm_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symm_workspace_swigregister", gsl_eigen_symm_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_symm_alloc", (PyCFunction) _wrap_gsl_eigen_symm_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symm_alloc(size_t const n) -> gsl_eigen_symm_workspace"},
-	 { (char *)"gsl_eigen_symm_free", (PyCFunction) _wrap_gsl_eigen_symm_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symm_free(gsl_eigen_symm_workspace w)"},
-	 { (char *)"gsl_eigen_symm", (PyCFunction) _wrap_gsl_eigen_symm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symm(gsl_matrix * A, gsl_vector * eval, gsl_eigen_symm_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_symmv_workspace", (PyCFunction) _wrap_new_gsl_eigen_symmv_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_symmv_workspace(size_t const n) -> gsl_eigen_symmv_workspace"},
-	 { (char *)"delete_gsl_eigen_symmv_workspace", _wrap_delete_gsl_eigen_symmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_symmv_workspace(gsl_eigen_symmv_workspace self)"},
-	 { (char *)"gsl_eigen_symmv_workspace_size_get", _wrap_gsl_eigen_symmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_size_get(gsl_eigen_symmv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_symmv_workspace_d_get", _wrap_gsl_eigen_symmv_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_d_get(gsl_eigen_symmv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symmv_workspace_sd_get", _wrap_gsl_eigen_symmv_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_sd_get(gsl_eigen_symmv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symmv_workspace_gc_get", _wrap_gsl_eigen_symmv_workspace_gc_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_gc_get(gsl_eigen_symmv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symmv_workspace_gs_get", _wrap_gsl_eigen_symmv_workspace_gs_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_gs_get(gsl_eigen_symmv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_symmv_workspace_swigregister", gsl_eigen_symmv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_symmv_alloc", (PyCFunction) _wrap_gsl_eigen_symmv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symmv_alloc(size_t const n) -> gsl_eigen_symmv_workspace"},
-	 { (char *)"gsl_eigen_symmv_free", (PyCFunction) _wrap_gsl_eigen_symmv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symmv_free(gsl_eigen_symmv_workspace w)"},
-	 { (char *)"gsl_eigen_symmv", (PyCFunction) _wrap_gsl_eigen_symmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symmv(gsl_matrix * A, gsl_vector * eval, gsl_matrix * evec, gsl_eigen_symmv_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_herm_workspace", (PyCFunction) _wrap_new_gsl_eigen_herm_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_herm_workspace(size_t const n) -> gsl_eigen_herm_workspace"},
-	 { (char *)"delete_gsl_eigen_herm_workspace", _wrap_delete_gsl_eigen_herm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_herm_workspace(gsl_eigen_herm_workspace self)"},
-	 { (char *)"gsl_eigen_herm_workspace_size_get", _wrap_gsl_eigen_herm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_size_get(gsl_eigen_herm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_herm_workspace_d_get", _wrap_gsl_eigen_herm_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_d_get(gsl_eigen_herm_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_herm_workspace_sd_get", _wrap_gsl_eigen_herm_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_sd_get(gsl_eigen_herm_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_herm_workspace_tau_get", _wrap_gsl_eigen_herm_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_tau_get(gsl_eigen_herm_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_herm_workspace_swigregister", gsl_eigen_herm_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_herm_alloc", (PyCFunction) _wrap_gsl_eigen_herm_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_herm_alloc(size_t const n) -> gsl_eigen_herm_workspace"},
-	 { (char *)"gsl_eigen_herm_free", (PyCFunction) _wrap_gsl_eigen_herm_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_herm_free(gsl_eigen_herm_workspace w)"},
-	 { (char *)"gsl_eigen_herm", (PyCFunction) _wrap_gsl_eigen_herm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_herm(gsl_matrix_complex * A, gsl_vector * eval, gsl_eigen_herm_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_hermv_workspace", (PyCFunction) _wrap_new_gsl_eigen_hermv_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_hermv_workspace(size_t const n) -> gsl_eigen_hermv_workspace"},
-	 { (char *)"delete_gsl_eigen_hermv_workspace", _wrap_delete_gsl_eigen_hermv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_hermv_workspace(gsl_eigen_hermv_workspace self)"},
-	 { (char *)"gsl_eigen_hermv_workspace_size_get", _wrap_gsl_eigen_hermv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_size_get(gsl_eigen_hermv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_hermv_workspace_d_get", _wrap_gsl_eigen_hermv_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_d_get(gsl_eigen_hermv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_hermv_workspace_sd_get", _wrap_gsl_eigen_hermv_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_sd_get(gsl_eigen_hermv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_hermv_workspace_tau_get", _wrap_gsl_eigen_hermv_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_tau_get(gsl_eigen_hermv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_hermv_workspace_gc_get", _wrap_gsl_eigen_hermv_workspace_gc_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_gc_get(gsl_eigen_hermv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_hermv_workspace_gs_get", _wrap_gsl_eigen_hermv_workspace_gs_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_gs_get(gsl_eigen_hermv_workspace self) -> double *"},
-	 { (char *)"gsl_eigen_hermv_workspace_swigregister", gsl_eigen_hermv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_hermv_alloc", (PyCFunction) _wrap_gsl_eigen_hermv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_hermv_alloc(size_t const n) -> gsl_eigen_hermv_workspace"},
-	 { (char *)"gsl_eigen_hermv_free", (PyCFunction) _wrap_gsl_eigen_hermv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_hermv_free(gsl_eigen_hermv_workspace w)"},
-	 { (char *)"gsl_eigen_hermv", (PyCFunction) _wrap_gsl_eigen_hermv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_hermv(gsl_matrix_complex * A, gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_hermv_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_francis_workspace", _wrap_new_gsl_eigen_francis_workspace, METH_VARARGS, (char *)"new_gsl_eigen_francis_workspace() -> gsl_eigen_francis_workspace"},
-	 { (char *)"delete_gsl_eigen_francis_workspace", _wrap_delete_gsl_eigen_francis_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_francis_workspace(gsl_eigen_francis_workspace self)"},
-	 { (char *)"gsl_eigen_francis_workspace_size_get", _wrap_gsl_eigen_francis_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_size_get(gsl_eigen_francis_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_francis_workspace_max_iterations_get", _wrap_gsl_eigen_francis_workspace_max_iterations_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_max_iterations_get(gsl_eigen_francis_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_francis_workspace_n_iter_get", _wrap_gsl_eigen_francis_workspace_n_iter_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_n_iter_get(gsl_eigen_francis_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_francis_workspace_n_evals_get", _wrap_gsl_eigen_francis_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_n_evals_get(gsl_eigen_francis_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_francis_workspace_compute_t_get", _wrap_gsl_eigen_francis_workspace_compute_t_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_compute_t_get(gsl_eigen_francis_workspace self) -> int"},
-	 { (char *)"gsl_eigen_francis_workspace_H_get", _wrap_gsl_eigen_francis_workspace_H_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_H_get(gsl_eigen_francis_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_francis_workspace_Z_get", _wrap_gsl_eigen_francis_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_Z_get(gsl_eigen_francis_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_francis_workspace_swigregister", gsl_eigen_francis_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_francis_alloc", _wrap_gsl_eigen_francis_alloc, METH_VARARGS, (char *)"gsl_eigen_francis_alloc() -> gsl_eigen_francis_workspace"},
-	 { (char *)"gsl_eigen_francis_free", (PyCFunction) _wrap_gsl_eigen_francis_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_francis_free(gsl_eigen_francis_workspace w)"},
-	 { (char *)"gsl_eigen_francis_T", (PyCFunction) _wrap_gsl_eigen_francis_T, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_francis_T(int const compute_t, gsl_eigen_francis_workspace w)"},
-	 { (char *)"gsl_eigen_francis", (PyCFunction) _wrap_gsl_eigen_francis, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_francis(gsl_matrix * H, gsl_vector_complex * eval, gsl_eigen_francis_workspace w) -> int"},
-	 { (char *)"gsl_eigen_francis_Z", (PyCFunction) _wrap_gsl_eigen_francis_Z, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_francis_Z(gsl_matrix * H, gsl_vector_complex * eval, gsl_matrix * Z, gsl_eigen_francis_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_nonsymm_workspace", (PyCFunction) _wrap_new_gsl_eigen_nonsymm_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_nonsymm_workspace(size_t const n) -> gsl_eigen_nonsymm_workspace"},
-	 { (char *)"delete_gsl_eigen_nonsymm_workspace", _wrap_delete_gsl_eigen_nonsymm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_nonsymm_workspace(gsl_eigen_nonsymm_workspace self)"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_params", (PyCFunction) _wrap_gsl_eigen_nonsymm_workspace_params, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_workspace_params(gsl_eigen_nonsymm_workspace self, int const compute_t, int const balance) -> gsl_error_flag_drop"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_size_get", _wrap_gsl_eigen_nonsymm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_size_get(gsl_eigen_nonsymm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_diag_get", _wrap_gsl_eigen_nonsymm_workspace_diag_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_diag_get(gsl_eigen_nonsymm_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_tau_get", _wrap_gsl_eigen_nonsymm_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_tau_get(gsl_eigen_nonsymm_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_Z_get", _wrap_gsl_eigen_nonsymm_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_Z_get(gsl_eigen_nonsymm_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_do_balance_get", _wrap_gsl_eigen_nonsymm_workspace_do_balance_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_do_balance_get(gsl_eigen_nonsymm_workspace self) -> int"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_n_evals_get", _wrap_gsl_eigen_nonsymm_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_n_evals_get(gsl_eigen_nonsymm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_francis_workspace_p_get", _wrap_gsl_eigen_nonsymm_workspace_francis_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_francis_workspace_p_get(gsl_eigen_nonsymm_workspace self) -> gsl_eigen_francis_workspace"},
-	 { (char *)"gsl_eigen_nonsymm_workspace_swigregister", gsl_eigen_nonsymm_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_nonsymm_alloc", (PyCFunction) _wrap_gsl_eigen_nonsymm_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_alloc(size_t const n) -> gsl_eigen_nonsymm_workspace"},
-	 { (char *)"gsl_eigen_nonsymm_free", (PyCFunction) _wrap_gsl_eigen_nonsymm_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_free(gsl_eigen_nonsymm_workspace w)"},
-	 { (char *)"gsl_eigen_nonsymm_params", (PyCFunction) _wrap_gsl_eigen_nonsymm_params, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_params(int const compute_t, int const balance, gsl_eigen_nonsymm_workspace w)"},
-	 { (char *)"gsl_eigen_nonsymm", (PyCFunction) _wrap_gsl_eigen_nonsymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm(gsl_matrix * A, gsl_vector_complex * eval, gsl_eigen_nonsymm_workspace w) -> int"},
-	 { (char *)"gsl_eigen_nonsymm_Z", (PyCFunction) _wrap_gsl_eigen_nonsymm_Z, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_Z(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix * Z, gsl_eigen_nonsymm_workspace w) -> int"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_size_get", _wrap_gsl_eigen_nonsymmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_size_get(gsl_eigen_nonsymmv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_work_get", _wrap_gsl_eigen_nonsymmv_workspace_work_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_work2_get", _wrap_gsl_eigen_nonsymmv_workspace_work2_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work2_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_work3_get", _wrap_gsl_eigen_nonsymmv_workspace_work3_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work3_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_Z_get", _wrap_gsl_eigen_nonsymmv_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_Z_get(gsl_eigen_nonsymmv_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get", _wrap_gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get(gsl_eigen_nonsymmv_workspace self) -> gsl_eigen_nonsymm_workspace"},
-	 { (char *)"new_gsl_eigen_nonsymmv_workspace", _wrap_new_gsl_eigen_nonsymmv_workspace, METH_VARARGS, (char *)"new_gsl_eigen_nonsymmv_workspace() -> gsl_eigen_nonsymmv_workspace"},
-	 { (char *)"delete_gsl_eigen_nonsymmv_workspace", _wrap_delete_gsl_eigen_nonsymmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_nonsymmv_workspace(gsl_eigen_nonsymmv_workspace self)"},
-	 { (char *)"gsl_eigen_nonsymmv_workspace_swigregister", gsl_eigen_nonsymmv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_nonsymmv_alloc", (PyCFunction) _wrap_gsl_eigen_nonsymmv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_alloc(size_t const n) -> gsl_eigen_nonsymmv_workspace"},
-	 { (char *)"gsl_eigen_nonsymmv_free", (PyCFunction) _wrap_gsl_eigen_nonsymmv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_free(gsl_eigen_nonsymmv_workspace w)"},
-	 { (char *)"gsl_eigen_nonsymmv", (PyCFunction) _wrap_gsl_eigen_nonsymmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_eigen_nonsymmv_workspace w) -> int"},
-	 { (char *)"gsl_eigen_nonsymmv_Z", (PyCFunction) _wrap_gsl_eigen_nonsymmv_Z, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_Z(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_matrix * Z, gsl_eigen_nonsymmv_workspace w) -> int"},
-	 { (char *)"gsl_eigen_gensymm_workspace_size_get", _wrap_gsl_eigen_gensymm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gensymm_workspace_size_get(gsl_eigen_gensymm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gensymm_workspace_symm_workspace_p_get", _wrap_gsl_eigen_gensymm_workspace_symm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_gensymm_workspace_symm_workspace_p_get(gsl_eigen_gensymm_workspace self) -> gsl_eigen_symm_workspace"},
-	 { (char *)"new_gsl_eigen_gensymm_workspace", _wrap_new_gsl_eigen_gensymm_workspace, METH_VARARGS, (char *)"new_gsl_eigen_gensymm_workspace() -> gsl_eigen_gensymm_workspace"},
-	 { (char *)"delete_gsl_eigen_gensymm_workspace", _wrap_delete_gsl_eigen_gensymm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gensymm_workspace(gsl_eigen_gensymm_workspace self)"},
-	 { (char *)"gsl_eigen_gensymm_workspace_swigregister", gsl_eigen_gensymm_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_gensymm_alloc", (PyCFunction) _wrap_gsl_eigen_gensymm_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymm_alloc(size_t const n) -> gsl_eigen_gensymm_workspace"},
-	 { (char *)"gsl_eigen_gensymm_free", (PyCFunction) _wrap_gsl_eigen_gensymm_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymm_free(gsl_eigen_gensymm_workspace w)"},
-	 { (char *)"gsl_eigen_gensymm", (PyCFunction) _wrap_gsl_eigen_gensymm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymm(gsl_matrix * A, gsl_matrix * B, gsl_vector * eval, gsl_eigen_gensymm_workspace w) -> int"},
-	 { (char *)"gsl_eigen_gensymm_standardize", (PyCFunction) _wrap_gsl_eigen_gensymm_standardize, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymm_standardize(gsl_matrix * A, gsl_matrix const * B) -> int"},
-	 { (char *)"gsl_eigen_gensymmv_workspace_size_get", _wrap_gsl_eigen_gensymmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gensymmv_workspace_size_get(gsl_eigen_gensymmv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gensymmv_workspace_symmv_workspace_p_get", _wrap_gsl_eigen_gensymmv_workspace_symmv_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_gensymmv_workspace_symmv_workspace_p_get(gsl_eigen_gensymmv_workspace self) -> gsl_eigen_symmv_workspace"},
-	 { (char *)"new_gsl_eigen_gensymmv_workspace", _wrap_new_gsl_eigen_gensymmv_workspace, METH_VARARGS, (char *)"new_gsl_eigen_gensymmv_workspace() -> gsl_eigen_gensymmv_workspace"},
-	 { (char *)"delete_gsl_eigen_gensymmv_workspace", _wrap_delete_gsl_eigen_gensymmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gensymmv_workspace(gsl_eigen_gensymmv_workspace self)"},
-	 { (char *)"gsl_eigen_gensymmv_workspace_swigregister", gsl_eigen_gensymmv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_gensymmv_alloc", (PyCFunction) _wrap_gsl_eigen_gensymmv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_alloc(size_t const n) -> gsl_eigen_gensymmv_workspace"},
-	 { (char *)"gsl_eigen_gensymmv_free", (PyCFunction) _wrap_gsl_eigen_gensymmv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_free(gsl_eigen_gensymmv_workspace w)"},
-	 { (char *)"gsl_eigen_gensymmv", (PyCFunction) _wrap_gsl_eigen_gensymmv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymmv(gsl_matrix * A, gsl_matrix * B, gsl_vector * eval, gsl_matrix * evec, gsl_eigen_gensymmv_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_genherm_workspace", (PyCFunction) _wrap_new_gsl_eigen_genherm_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_genherm_workspace(size_t const n) -> gsl_eigen_genherm_workspace"},
-	 { (char *)"delete_gsl_eigen_genherm_workspace", _wrap_delete_gsl_eigen_genherm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genherm_workspace(gsl_eigen_genherm_workspace self)"},
-	 { (char *)"gsl_eigen_genherm_workspace_size_get", _wrap_gsl_eigen_genherm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genherm_workspace_size_get(gsl_eigen_genherm_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_genherm_workspace_herm_workspace_p_get", _wrap_gsl_eigen_genherm_workspace_herm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genherm_workspace_herm_workspace_p_get(gsl_eigen_genherm_workspace self) -> gsl_eigen_herm_workspace"},
-	 { (char *)"gsl_eigen_genherm_workspace_swigregister", gsl_eigen_genherm_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_genherm_alloc", (PyCFunction) _wrap_gsl_eigen_genherm_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genherm_alloc(size_t const n) -> gsl_eigen_genherm_workspace"},
-	 { (char *)"gsl_eigen_genherm_free", (PyCFunction) _wrap_gsl_eigen_genherm_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genherm_free(gsl_eigen_genherm_workspace w)"},
-	 { (char *)"gsl_eigen_genherm", (PyCFunction) _wrap_gsl_eigen_genherm, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genherm(gsl_matrix_complex * A, gsl_matrix_complex * B, gsl_vector * eval, gsl_eigen_genherm_workspace w) -> int"},
-	 { (char *)"gsl_eigen_genherm_standardize", (PyCFunction) _wrap_gsl_eigen_genherm_standardize, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genherm_standardize(gsl_matrix_complex * A, gsl_matrix_complex const * B) -> int"},
-	 { (char *)"new_gsl_eigen_genhermv_workspace", (PyCFunction) _wrap_new_gsl_eigen_genhermv_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_genhermv_workspace(size_t const n) -> gsl_eigen_genhermv_workspace"},
-	 { (char *)"delete_gsl_eigen_genhermv_workspace", _wrap_delete_gsl_eigen_genhermv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genhermv_workspace(gsl_eigen_genhermv_workspace self)"},
-	 { (char *)"gsl_eigen_genhermv_workspace_size_get", _wrap_gsl_eigen_genhermv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genhermv_workspace_size_get(gsl_eigen_genhermv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_genhermv_workspace_hermv_workspace_p_get", _wrap_gsl_eigen_genhermv_workspace_hermv_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genhermv_workspace_hermv_workspace_p_get(gsl_eigen_genhermv_workspace self) -> gsl_eigen_hermv_workspace"},
-	 { (char *)"gsl_eigen_genhermv_workspace_swigregister", gsl_eigen_genhermv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_genhermv_alloc", (PyCFunction) _wrap_gsl_eigen_genhermv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genhermv_alloc(size_t const n) -> gsl_eigen_genhermv_workspace"},
-	 { (char *)"gsl_eigen_genhermv_free", (PyCFunction) _wrap_gsl_eigen_genhermv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genhermv_free(gsl_eigen_genhermv_workspace w)"},
-	 { (char *)"gsl_eigen_genhermv", (PyCFunction) _wrap_gsl_eigen_genhermv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genhermv(gsl_matrix_complex * A, gsl_matrix_complex * B, gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_genhermv_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_gen_workspace", (PyCFunction) _wrap_new_gsl_eigen_gen_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_gen_workspace(size_t const n) -> gsl_eigen_gen_workspace"},
-	 { (char *)"delete_gsl_eigen_gen_workspace", _wrap_delete_gsl_eigen_gen_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gen_workspace(gsl_eigen_gen_workspace self)"},
-	 { (char *)"gsl_eigen_gen_workspace_size_get", _wrap_gsl_eigen_gen_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_size_get(gsl_eigen_gen_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gen_workspace_work_get", _wrap_gsl_eigen_gen_workspace_work_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_work_get(gsl_eigen_gen_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_gen_workspace_n_evals_get", _wrap_gsl_eigen_gen_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_n_evals_get(gsl_eigen_gen_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gen_workspace_max_iterations_get", _wrap_gsl_eigen_gen_workspace_max_iterations_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_max_iterations_get(gsl_eigen_gen_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gen_workspace_n_iter_get", _wrap_gsl_eigen_gen_workspace_n_iter_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_n_iter_get(gsl_eigen_gen_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_gen_workspace_eshift_get", _wrap_gsl_eigen_gen_workspace_eshift_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_eshift_get(gsl_eigen_gen_workspace self) -> double"},
-	 { (char *)"gsl_eigen_gen_workspace_needtop_get", _wrap_gsl_eigen_gen_workspace_needtop_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_needtop_get(gsl_eigen_gen_workspace self) -> int"},
-	 { (char *)"gsl_eigen_gen_workspace_atol_get", _wrap_gsl_eigen_gen_workspace_atol_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_atol_get(gsl_eigen_gen_workspace self) -> double"},
-	 { (char *)"gsl_eigen_gen_workspace_btol_get", _wrap_gsl_eigen_gen_workspace_btol_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_btol_get(gsl_eigen_gen_workspace self) -> double"},
-	 { (char *)"gsl_eigen_gen_workspace_ascale_get", _wrap_gsl_eigen_gen_workspace_ascale_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_ascale_get(gsl_eigen_gen_workspace self) -> double"},
-	 { (char *)"gsl_eigen_gen_workspace_bscale_get", _wrap_gsl_eigen_gen_workspace_bscale_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_bscale_get(gsl_eigen_gen_workspace self) -> double"},
-	 { (char *)"gsl_eigen_gen_workspace_H_get", _wrap_gsl_eigen_gen_workspace_H_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_H_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_gen_workspace_R_get", _wrap_gsl_eigen_gen_workspace_R_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_R_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_gen_workspace_compute_s_get", _wrap_gsl_eigen_gen_workspace_compute_s_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_compute_s_get(gsl_eigen_gen_workspace self) -> int"},
-	 { (char *)"gsl_eigen_gen_workspace_compute_t_get", _wrap_gsl_eigen_gen_workspace_compute_t_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_compute_t_get(gsl_eigen_gen_workspace self) -> int"},
-	 { (char *)"gsl_eigen_gen_workspace_Q_get", _wrap_gsl_eigen_gen_workspace_Q_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_Q_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_gen_workspace_Z_get", _wrap_gsl_eigen_gen_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_Z_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_gen_workspace_swigregister", gsl_eigen_gen_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_gen_alloc", (PyCFunction) _wrap_gsl_eigen_gen_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gen_alloc(size_t const n) -> gsl_eigen_gen_workspace"},
-	 { (char *)"gsl_eigen_gen_free", (PyCFunction) _wrap_gsl_eigen_gen_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gen_free(gsl_eigen_gen_workspace w)"},
-	 { (char *)"gsl_eigen_gen_params", (PyCFunction) _wrap_gsl_eigen_gen_params, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gen_params(int const compute_s, int const compute_t, int const balance, gsl_eigen_gen_workspace w)"},
-	 { (char *)"gsl_eigen_gen", (PyCFunction) _wrap_gsl_eigen_gen, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gen(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_eigen_gen_workspace w) -> int"},
-	 { (char *)"gsl_eigen_gen_QZ", (PyCFunction) _wrap_gsl_eigen_gen_QZ, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gen_QZ(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix * Q, gsl_matrix * Z, gsl_eigen_gen_workspace w) -> int"},
-	 { (char *)"new_gsl_eigen_genv_workspace", (PyCFunction) _wrap_new_gsl_eigen_genv_workspace, METH_VARARGS | METH_KEYWORDS, (char *)"new_gsl_eigen_genv_workspace(size_t const n) -> gsl_eigen_genv_workspace"},
-	 { (char *)"delete_gsl_eigen_genv_workspace", _wrap_delete_gsl_eigen_genv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genv_workspace(gsl_eigen_genv_workspace self)"},
-	 { (char *)"gsl_eigen_genv_workspace_size_get", _wrap_gsl_eigen_genv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_size_get(gsl_eigen_genv_workspace self) -> size_t"},
-	 { (char *)"gsl_eigen_genv_workspace_work1_get", _wrap_gsl_eigen_genv_workspace_work1_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work1_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_work2_get", _wrap_gsl_eigen_genv_workspace_work2_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work2_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_work3_get", _wrap_gsl_eigen_genv_workspace_work3_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work3_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_work4_get", _wrap_gsl_eigen_genv_workspace_work4_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work4_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_work5_get", _wrap_gsl_eigen_genv_workspace_work5_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work5_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_work6_get", _wrap_gsl_eigen_genv_workspace_work6_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work6_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
-	 { (char *)"gsl_eigen_genv_workspace_Q_get", _wrap_gsl_eigen_genv_workspace_Q_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_Q_get(gsl_eigen_genv_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_genv_workspace_Z_get", _wrap_gsl_eigen_genv_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_Z_get(gsl_eigen_genv_workspace self) -> gsl_matrix *"},
-	 { (char *)"gsl_eigen_genv_workspace_gen_workspace_p_get", _wrap_gsl_eigen_genv_workspace_gen_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_gen_workspace_p_get(gsl_eigen_genv_workspace self) -> gsl_eigen_gen_workspace"},
-	 { (char *)"gsl_eigen_genv_workspace_swigregister", gsl_eigen_genv_workspace_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_eigen_genv_alloc", (PyCFunction) _wrap_gsl_eigen_genv_alloc, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genv_alloc(size_t const n) -> gsl_eigen_genv_workspace"},
-	 { (char *)"gsl_eigen_genv_free", (PyCFunction) _wrap_gsl_eigen_genv_free, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genv_free(gsl_eigen_genv_workspace w)"},
-	 { (char *)"gsl_eigen_genv", (PyCFunction) _wrap_gsl_eigen_genv, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genv(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_eigen_genv_workspace w) -> int"},
-	 { (char *)"gsl_eigen_genv_QZ", (PyCFunction) _wrap_gsl_eigen_genv_QZ, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genv_QZ(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_matrix * Q, gsl_matrix * Z, gsl_eigen_genv_workspace w) -> int"},
-	 { (char *)"gsl_eigen_symmv_sort", (PyCFunction) _wrap_gsl_eigen_symmv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_symmv_sort(gsl_vector * eval, gsl_matrix * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_eigen_hermv_sort", (PyCFunction) _wrap_gsl_eigen_hermv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_hermv_sort(gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_eigen_nonsymmv_sort", (PyCFunction) _wrap_gsl_eigen_nonsymmv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_sort(gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_eigen_gensymmv_sort", (PyCFunction) _wrap_gsl_eigen_gensymmv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_sort(gsl_vector * eval, gsl_matrix * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_eigen_genhermv_sort", (PyCFunction) _wrap_gsl_eigen_genhermv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genhermv_sort(gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_eigen_genv_sort", (PyCFunction) _wrap_gsl_eigen_genv_sort, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_genv_sort(gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
-	 { (char *)"gsl_schur_gen_eigvals", (PyCFunction) _wrap_gsl_schur_gen_eigvals, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_schur_gen_eigvals(gsl_matrix const * A, gsl_matrix const * B, double * wr1, double * wr2, double * wi, double * scale1, double * scale2) -> int"},
-	 { (char *)"gsl_schur_solve_equation", (PyCFunction) _wrap_gsl_schur_solve_equation, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_schur_solve_equation(double ca, gsl_matrix const * A, double z, double d1, double d2, gsl_vector const * b, gsl_vector * x, double * s, double * xnorm, double smin) -> int"},
-	 { (char *)"gsl_schur_solve_equation_z", (PyCFunction) _wrap_gsl_schur_solve_equation_z, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_schur_solve_equation_z(double ca, gsl_matrix const * A, gsl_complex * z, double d1, double d2, gsl_vector_complex const * b, gsl_vector_complex * x, double * s, double * xnorm, double smin) -> int"},
-	 { (char *)"gsl_eigen_jacobi", (PyCFunction) _wrap_gsl_eigen_jacobi, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_jacobi(gsl_matrix * matrix, gsl_vector * eval, gsl_matrix * evec, unsigned int max_rot, unsigned int * nrot) -> int"},
-	 { (char *)"gsl_eigen_invert_jacobi", (PyCFunction) _wrap_gsl_eigen_invert_jacobi, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_eigen_invert_jacobi(gsl_matrix const * matrix, gsl_matrix * ainv, unsigned int max_rot) -> int"},
-	 { (char *)"new_gsl_interp_accel", _wrap_new_gsl_interp_accel, METH_VARARGS, (char *)"new_gsl_interp_accel() -> gsl_interp_accel"},
-	 { (char *)"delete_gsl_interp_accel", _wrap_delete_gsl_interp_accel, METH_VARARGS, (char *)"delete_gsl_interp_accel(gsl_interp_accel self)"},
-	 { (char *)"gsl_interp_accel_reset", _wrap_gsl_interp_accel_reset, METH_VARARGS, (char *)"gsl_interp_accel_reset(gsl_interp_accel self) -> gsl_error_flag_drop"},
-	 { (char *)"gsl_interp_accel_find", (PyCFunction) _wrap_gsl_interp_accel_find, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_interp_accel_find(gsl_interp_accel self, double const [] x_array, double x) -> size_t"},
-	 { (char *)"gsl_interp_accel_tocobject", _wrap_gsl_interp_accel_tocobject, METH_VARARGS, (char *)"gsl_interp_accel_tocobject(gsl_interp_accel self) -> PyObject *"},
-	 { (char *)"gsl_interp_accel_swigregister", gsl_interp_accel_swigregister, METH_VARARGS, NULL},
-	 { (char *)"new_pygsl_spline", (PyCFunction) _wrap_new_pygsl_spline, METH_VARARGS | METH_KEYWORDS, (char *)"new_pygsl_spline(gsl_interp_type const * T, size_t n) -> pygsl_spline"},
-	 { (char *)"delete_pygsl_spline", _wrap_delete_pygsl_spline, METH_VARARGS, (char *)"delete_pygsl_spline(pygsl_spline self)"},
-	 { (char *)"pygsl_spline_accel_reset", _wrap_pygsl_spline_accel_reset, METH_VARARGS, (char *)"pygsl_spline_accel_reset(pygsl_spline self) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_accel_find", (PyCFunction) _wrap_pygsl_spline_accel_find, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_accel_find(pygsl_spline self, double x) -> size_t"},
-	 { (char *)"pygsl_spline_tocobject", _wrap_pygsl_spline_tocobject, METH_VARARGS, (char *)"pygsl_spline_tocobject(pygsl_spline self) -> PyObject *"},
-	 { (char *)"pygsl_spline_init", (PyCFunction) _wrap_pygsl_spline_init, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_init(pygsl_spline self, double const [] xa) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_eval", (PyCFunction) _wrap_pygsl_spline_eval, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval(pygsl_spline self, double IN) -> double"},
-	 { (char *)"pygsl_spline_eval_deriv_e", (PyCFunction) _wrap_pygsl_spline_eval_deriv_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_eval_deriv", (PyCFunction) _wrap_pygsl_spline_eval_deriv, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv(pygsl_spline self, double IN) -> double"},
-	 { (char *)"pygsl_spline_eval_deriv2_e", (PyCFunction) _wrap_pygsl_spline_eval_deriv2_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_eval_deriv2", (PyCFunction) _wrap_pygsl_spline_eval_deriv2, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2(pygsl_spline self, double IN) -> double"},
-	 { (char *)"pygsl_spline_eval_integ", (PyCFunction) _wrap_pygsl_spline_eval_integ, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_integ(pygsl_spline self, double a, double b) -> double"},
-	 { (char *)"pygsl_spline_eval_integ_e", (PyCFunction) _wrap_pygsl_spline_eval_integ_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_e(pygsl_spline self, double a, double b) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_eval_e", (PyCFunction) _wrap_pygsl_spline_eval_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_spline_eval_vector", (PyCFunction) _wrap_pygsl_spline_eval_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_e_vector", (PyCFunction) _wrap_pygsl_spline_eval_e_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_deriv_vector", (PyCFunction) _wrap_pygsl_spline_eval_deriv_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_deriv2_vector", (PyCFunction) _wrap_pygsl_spline_eval_deriv2_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_deriv_e_vector", (PyCFunction) _wrap_pygsl_spline_eval_deriv_e_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_deriv2_e_vector", (PyCFunction) _wrap_pygsl_spline_eval_deriv2_e_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_integ_vector", (PyCFunction) _wrap_pygsl_spline_eval_integ_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_vector(pygsl_spline self, gsl_vector const * IN, gsl_vector const * IN2) -> PyObject *"},
-	 { (char *)"pygsl_spline_eval_integ_e_vector", (PyCFunction) _wrap_pygsl_spline_eval_integ_e_vector, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_e_vector(pygsl_spline self, gsl_vector const * IN, gsl_vector const * IN2) -> PyObject *"},
-	 { (char *)"pygsl_spline_name", _wrap_pygsl_spline_name, METH_VARARGS, (char *)"pygsl_spline_name(pygsl_spline self) -> char const *"},
-	 { (char *)"pygsl_spline_min_size", _wrap_pygsl_spline_min_size, METH_VARARGS, (char *)"pygsl_spline_min_size(pygsl_spline self) -> unsigned int"},
-	 { (char *)"pygsl_spline_swigregister", pygsl_spline_swigregister, METH_VARARGS, NULL},
-	 { (char *)"new_pygsl_interp", (PyCFunction) _wrap_new_pygsl_interp, METH_VARARGS | METH_KEYWORDS, (char *)"new_pygsl_interp(gsl_interp_type const * T, size_t n) -> pygsl_interp"},
-	 { (char *)"delete_pygsl_interp", _wrap_delete_pygsl_interp, METH_VARARGS, (char *)"delete_pygsl_interp(pygsl_interp self)"},
-	 { (char *)"pygsl_interp_init", (PyCFunction) _wrap_pygsl_interp_init, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_init(pygsl_interp self, PyObject * x, PyObject * y) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_name", _wrap_pygsl_interp_name, METH_VARARGS, (char *)"pygsl_interp_name(pygsl_interp self) -> char const *"},
-	 { (char *)"pygsl_interp_min_size", _wrap_pygsl_interp_min_size, METH_VARARGS, (char *)"pygsl_interp_min_size(pygsl_interp self) -> unsigned int"},
-	 { (char *)"pygsl_interp_eval_e", (PyCFunction) _wrap_pygsl_interp_eval_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_eval", (PyCFunction) _wrap_pygsl_interp_eval, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval(pygsl_interp self, double x) -> double"},
-	 { (char *)"pygsl_interp_eval_deriv_e", (PyCFunction) _wrap_pygsl_interp_eval_deriv_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_eval_deriv", (PyCFunction) _wrap_pygsl_interp_eval_deriv, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv(pygsl_interp self, double x) -> double"},
-	 { (char *)"pygsl_interp_eval_deriv2_e", (PyCFunction) _wrap_pygsl_interp_eval_deriv2_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv2_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_eval_deriv2", (PyCFunction) _wrap_pygsl_interp_eval_deriv2, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv2(pygsl_interp self, double x) -> double"},
-	 { (char *)"pygsl_interp_eval_integ_e", (PyCFunction) _wrap_pygsl_interp_eval_integ_e, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_integ_e(pygsl_interp self, double a, double b) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_eval_integ", (PyCFunction) _wrap_pygsl_interp_eval_integ, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_eval_integ(pygsl_interp self, double a, double b) -> double"},
-	 { (char *)"pygsl_interp_accel_reset", _wrap_pygsl_interp_accel_reset, METH_VARARGS, (char *)"pygsl_interp_accel_reset(pygsl_interp self) -> gsl_error_flag_drop"},
-	 { (char *)"pygsl_interp_accel_find", (PyCFunction) _wrap_pygsl_interp_accel_find, METH_VARARGS | METH_KEYWORDS, (char *)"pygsl_interp_accel_find(pygsl_interp self, double x) -> size_t"},
-	 { (char *)"pygsl_interp_swigregister", pygsl_interp_swigregister, METH_VARARGS, NULL},
-	 { (char *)"gsl_interp_bsearch", (PyCFunction) _wrap_gsl_interp_bsearch, METH_VARARGS | METH_KEYWORDS, (char *)"gsl_interp_bsearch(double const [] x_array, double x, size_t index_lo, size_t index_hi) -> size_t"},
+	 { "new_Combination", (PyCFunction)_wrap_new_Combination, METH_VARARGS|METH_KEYWORDS, (char *)"bla blamore blah blah"},
+	 { "delete_Combination", _wrap_delete_Combination, METH_VARARGS, (char *)"delete_Combination(Combination self)"},
+	 { "Combination___getitem__", (PyCFunction)_wrap_Combination___getitem__, METH_VARARGS|METH_KEYWORDS, (char *)"Combination___getitem__(Combination self, size_t const i) -> size_t"},
+	 { "Combination_k", _wrap_Combination_k, METH_VARARGS, (char *)"Combination_k(Combination self) -> size_t"},
+	 { "Combination_n", _wrap_Combination_n, METH_VARARGS, (char *)"Combination_n(Combination self) -> size_t"},
+	 { "Combination_init_first", _wrap_Combination_init_first, METH_VARARGS, (char *)"Combination_init_first(Combination self)"},
+	 { "Combination_init_last", _wrap_Combination_init_last, METH_VARARGS, (char *)"Combination_init_last(Combination self)"},
+	 { "Combination_valid", _wrap_Combination_valid, METH_VARARGS, (char *)"Combination_valid(Combination self) -> int"},
+	 { "Combination_next", _wrap_Combination_next, METH_VARARGS, (char *)"Combination_next(Combination self) -> int"},
+	 { "Combination_prev", _wrap_Combination_prev, METH_VARARGS, (char *)"Combination_prev(Combination self) -> int"},
+	 { "Combination_tolist", _wrap_Combination_tolist, METH_VARARGS, (char *)"Combination_tolist(Combination self) -> PyObject *"},
+	 { "Combination_toarray", _wrap_Combination_toarray, METH_VARARGS, (char *)"Combination_toarray(Combination self) -> PyObject *"},
+	 { "Combination_swigregister", Combination_swigregister, METH_VARARGS, NULL},
+	 { "gsl_log1p", (PyCFunction)_wrap_gsl_log1p, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_log1p(double const x) -> double"},
+	 { "gsl_expm1", (PyCFunction)_wrap_gsl_expm1, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_expm1(double const x) -> double"},
+	 { "gsl_hypot", (PyCFunction)_wrap_gsl_hypot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_hypot(double const x, double const y) -> double"},
+	 { "gsl_hypot3", (PyCFunction)_wrap_gsl_hypot3, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_hypot3(double const x, double const y, double const z) -> double"},
+	 { "gsl_acosh", (PyCFunction)_wrap_gsl_acosh, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_acosh(double const x) -> double"},
+	 { "gsl_asinh", (PyCFunction)_wrap_gsl_asinh, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_asinh(double const x) -> double"},
+	 { "gsl_atanh", (PyCFunction)_wrap_gsl_atanh, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_atanh(double const x) -> double"},
+	 { "gsl_isnan", (PyCFunction)_wrap_gsl_isnan, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_isnan(double const x) -> int"},
+	 { "gsl_isinf", (PyCFunction)_wrap_gsl_isinf, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_isinf(double const x) -> int"},
+	 { "gsl_finite", (PyCFunction)_wrap_gsl_finite, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_finite(double const x) -> int"},
+	 { "gsl_nan", _wrap_gsl_nan, METH_VARARGS, (char *)"gsl_nan() -> double"},
+	 { "gsl_posinf", _wrap_gsl_posinf, METH_VARARGS, (char *)"gsl_posinf() -> double"},
+	 { "gsl_neginf", _wrap_gsl_neginf, METH_VARARGS, (char *)"gsl_neginf() -> double"},
+	 { "gsl_fdiv", (PyCFunction)_wrap_gsl_fdiv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_fdiv(double const x, double const y) -> double"},
+	 { "gsl_coerce_double", (PyCFunction)_wrap_gsl_coerce_double, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_coerce_double(double const x) -> double"},
+	 { "gsl_coerce_float", (PyCFunction)_wrap_gsl_coerce_float, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_coerce_float(float const x) -> float"},
+	 { "gsl_coerce_long_double", (PyCFunction)_wrap_gsl_coerce_long_double, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_coerce_long_double(long double const x) -> long double"},
+	 { "gsl_ldexp", (PyCFunction)_wrap_gsl_ldexp, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_ldexp(double const x, int const e) -> double"},
+	 { "gsl_frexp", (PyCFunction)_wrap_gsl_frexp, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_frexp(double const x, int * e) -> double"},
+	 { "gsl_fcmp", (PyCFunction)_wrap_gsl_fcmp, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_fcmp(double const x1, double const x2, double const epsilon) -> int"},
+	 { "gsl_blas_sdsdot", (PyCFunction)_wrap_gsl_blas_sdsdot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sdsdot(float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, float * result) -> int"},
+	 { "gsl_blas_dsdot", (PyCFunction)_wrap_gsl_blas_dsdot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsdot(gsl_vector_float const * X, gsl_vector_float const * Y) -> int"},
+	 { "gsl_blas_sdot", (PyCFunction)_wrap_gsl_blas_sdot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sdot(gsl_vector_float const * X, gsl_vector_float const * Y, float * result) -> int"},
+	 { "gsl_blas_ddot", (PyCFunction)_wrap_gsl_blas_ddot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ddot(gsl_vector const * X, gsl_vector const * Y) -> int"},
+	 { "gsl_blas_cdotu", (PyCFunction)_wrap_gsl_blas_cdotu, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cdotu(gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_complex_float * dotu) -> int"},
+	 { "gsl_blas_cdotc", (PyCFunction)_wrap_gsl_blas_cdotc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cdotc(gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_complex_float * dotc) -> int"},
+	 { "gsl_blas_zdotu", (PyCFunction)_wrap_gsl_blas_zdotu, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zdotu(gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_complex * dotu) -> int"},
+	 { "gsl_blas_zdotc", (PyCFunction)_wrap_gsl_blas_zdotc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zdotc(gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_complex * dotc) -> int"},
+	 { "gsl_blas_snrm2", (PyCFunction)_wrap_gsl_blas_snrm2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_snrm2(gsl_vector_float const * X) -> float"},
+	 { "gsl_blas_sasum", (PyCFunction)_wrap_gsl_blas_sasum, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sasum(gsl_vector_float const * X) -> float"},
+	 { "gsl_blas_dnrm2", (PyCFunction)_wrap_gsl_blas_dnrm2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dnrm2(gsl_vector const * X) -> double"},
+	 { "gsl_blas_dasum", (PyCFunction)_wrap_gsl_blas_dasum, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dasum(gsl_vector const * X) -> double"},
+	 { "gsl_blas_scnrm2", (PyCFunction)_wrap_gsl_blas_scnrm2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_scnrm2(gsl_vector_complex_float const * X) -> float"},
+	 { "gsl_blas_scasum", (PyCFunction)_wrap_gsl_blas_scasum, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_scasum(gsl_vector_complex_float const * X) -> float"},
+	 { "gsl_blas_dznrm2", (PyCFunction)_wrap_gsl_blas_dznrm2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dznrm2(gsl_vector_complex const * X) -> double"},
+	 { "gsl_blas_dzasum", (PyCFunction)_wrap_gsl_blas_dzasum, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dzasum(gsl_vector_complex const * X) -> double"},
+	 { "gsl_blas_isamax", (PyCFunction)_wrap_gsl_blas_isamax, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_isamax(gsl_vector_float const * X) -> CBLAS_INDEX_t"},
+	 { "gsl_blas_idamax", (PyCFunction)_wrap_gsl_blas_idamax, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_idamax(gsl_vector const * X) -> CBLAS_INDEX_t"},
+	 { "gsl_blas_icamax", (PyCFunction)_wrap_gsl_blas_icamax, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_icamax(gsl_vector_complex_float const * X) -> CBLAS_INDEX_t"},
+	 { "gsl_blas_izamax", (PyCFunction)_wrap_gsl_blas_izamax, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_izamax(gsl_vector_complex const * X) -> CBLAS_INDEX_t"},
+	 { "gsl_blas_sswap", (PyCFunction)_wrap_gsl_blas_sswap, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sswap(gsl_vector_float * X, gsl_vector_float * Y) -> int"},
+	 { "gsl_blas_scopy", (PyCFunction)_wrap_gsl_blas_scopy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_scopy(gsl_vector_float const * X, gsl_vector_float * Y) -> int"},
+	 { "gsl_blas_saxpy", (PyCFunction)_wrap_gsl_blas_saxpy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_saxpy(float alpha, gsl_vector_float const * X, gsl_vector_float * Y) -> int"},
+	 { "gsl_blas_dswap", (PyCFunction)_wrap_gsl_blas_dswap, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dswap(gsl_vector * X, gsl_vector * Y) -> int"},
+	 { "gsl_blas_dcopy", (PyCFunction)_wrap_gsl_blas_dcopy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dcopy(gsl_vector const * X, gsl_vector * Y) -> int"},
+	 { "gsl_blas_daxpy", (PyCFunction)_wrap_gsl_blas_daxpy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_daxpy(double alpha, gsl_vector const * X, gsl_vector * Y) -> int"},
+	 { "gsl_blas_cswap", (PyCFunction)_wrap_gsl_blas_cswap, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cswap(gsl_vector_complex_float * X, gsl_vector_complex_float * Y) -> int"},
+	 { "gsl_blas_ccopy", (PyCFunction)_wrap_gsl_blas_ccopy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ccopy(gsl_vector_complex_float const * X, gsl_vector_complex_float * Y) -> int"},
+	 { "gsl_blas_caxpy", (PyCFunction)_wrap_gsl_blas_caxpy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_caxpy(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float * Y) -> int"},
+	 { "gsl_blas_zswap", (PyCFunction)_wrap_gsl_blas_zswap, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zswap(gsl_vector_complex * X, gsl_vector_complex * Y) -> int"},
+	 { "gsl_blas_zcopy", (PyCFunction)_wrap_gsl_blas_zcopy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zcopy(gsl_vector_complex const * X, gsl_vector_complex * Y) -> int"},
+	 { "gsl_blas_zaxpy", (PyCFunction)_wrap_gsl_blas_zaxpy, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zaxpy(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex * Y) -> int"},
+	 { "gsl_blas_srotg", (PyCFunction)_wrap_gsl_blas_srotg, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_srotg(float [] a, float [] b, float [] c, float [] s) -> int"},
+	 { "gsl_blas_srotmg", (PyCFunction)_wrap_gsl_blas_srotmg, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_srotmg(float [] d1, float [] d2, float [] b1, float b2, float [] P) -> int"},
+	 { "gsl_blas_srot", (PyCFunction)_wrap_gsl_blas_srot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_srot(gsl_vector_float * X, gsl_vector_float * Y, float c, float s) -> int"},
+	 { "gsl_blas_srotm", (PyCFunction)_wrap_gsl_blas_srotm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_srotm(gsl_vector_float * X, gsl_vector_float * Y, float const [] P) -> int"},
+	 { "gsl_blas_drotg", (PyCFunction)_wrap_gsl_blas_drotg, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_drotg(double [] a, double [] b, double [] c, double [] s) -> int"},
+	 { "gsl_blas_drotmg", (PyCFunction)_wrap_gsl_blas_drotmg, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_drotmg(double [] d1, double [] d2, double [] b1, double b2, double [] P) -> int"},
+	 { "gsl_blas_drot", (PyCFunction)_wrap_gsl_blas_drot, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_drot(gsl_vector * X, gsl_vector * Y, double const c, double const s) -> int"},
+	 { "gsl_blas_drotm", (PyCFunction)_wrap_gsl_blas_drotm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_drotm(gsl_vector * X, gsl_vector * Y, double const [] P) -> int"},
+	 { "gsl_blas_sscal", (PyCFunction)_wrap_gsl_blas_sscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sscal(float alpha, gsl_vector_float * X)"},
+	 { "gsl_blas_dscal", (PyCFunction)_wrap_gsl_blas_dscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dscal(double alpha, gsl_vector * X)"},
+	 { "gsl_blas_cscal", (PyCFunction)_wrap_gsl_blas_cscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cscal(gsl_complex_float const alpha, gsl_vector_complex_float * X)"},
+	 { "gsl_blas_zscal", (PyCFunction)_wrap_gsl_blas_zscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zscal(gsl_complex const alpha, gsl_vector_complex * X)"},
+	 { "gsl_blas_csscal", (PyCFunction)_wrap_gsl_blas_csscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_csscal(float alpha, gsl_vector_complex_float * X)"},
+	 { "gsl_blas_zdscal", (PyCFunction)_wrap_gsl_blas_zdscal, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zdscal(double alpha, gsl_vector_complex * X)"},
+	 { "gsl_blas_sgemv", (PyCFunction)_wrap_gsl_blas_sgemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sgemv(CBLAS_TRANSPOSE_t TransA, float alpha, gsl_matrix_float const * A, gsl_vector_float const * X, float beta, gsl_vector_float * Y) -> int"},
+	 { "gsl_blas_strmv", (PyCFunction)_wrap_gsl_blas_strmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_strmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_float const * A, gsl_vector_float * X) -> int"},
+	 { "gsl_blas_strsv", (PyCFunction)_wrap_gsl_blas_strsv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_strsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_float const * A, gsl_vector_float * X) -> int"},
+	 { "gsl_blas_dgemv", (PyCFunction)_wrap_gsl_blas_dgemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dgemv(CBLAS_TRANSPOSE_t TransA, double alpha, gsl_matrix const * A, gsl_vector const * X, double beta, gsl_vector * Y) -> int"},
+	 { "gsl_blas_dtrmv", (PyCFunction)_wrap_gsl_blas_dtrmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dtrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix const * A, gsl_vector * X) -> int"},
+	 { "gsl_blas_dtrsv", (PyCFunction)_wrap_gsl_blas_dtrsv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dtrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix const * A, gsl_vector * X) -> int"},
+	 { "gsl_blas_cgemv", (PyCFunction)_wrap_gsl_blas_cgemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cgemv(CBLAS_TRANSPOSE_t TransA, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_vector_complex_float const * X, gsl_complex_float const beta, gsl_vector_complex_float * Y) -> int"},
+	 { "gsl_blas_ctrmv", (PyCFunction)_wrap_gsl_blas_ctrmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ctrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex_float const * A, gsl_vector_complex_float * X) -> int"},
+	 { "gsl_blas_ctrsv", (PyCFunction)_wrap_gsl_blas_ctrsv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ctrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex_float const * A, gsl_vector_complex_float * X) -> int"},
+	 { "gsl_blas_zgemv", (PyCFunction)_wrap_gsl_blas_zgemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zgemv(CBLAS_TRANSPOSE_t TransA, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_vector_complex const * X, gsl_complex const beta, gsl_vector_complex * Y) -> int"},
+	 { "gsl_blas_ztrmv", (PyCFunction)_wrap_gsl_blas_ztrmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ztrmv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex const * A, gsl_vector_complex * X) -> int"},
+	 { "gsl_blas_ztrsv", (PyCFunction)_wrap_gsl_blas_ztrsv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ztrsv(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_matrix_complex const * A, gsl_vector_complex * X) -> int"},
+	 { "gsl_blas_ssymv", (PyCFunction)_wrap_gsl_blas_ssymv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssymv(CBLAS_UPLO_t Uplo, float alpha, gsl_matrix_float const * A, gsl_vector_float const * X, float beta, gsl_vector_float * Y) -> int"},
+	 { "gsl_blas_sger", (PyCFunction)_wrap_gsl_blas_sger, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sger(float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, gsl_matrix_float * A) -> int"},
+	 { "gsl_blas_ssyr", (PyCFunction)_wrap_gsl_blas_ssyr, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssyr(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_float const * X, gsl_matrix_float * A) -> int"},
+	 { "gsl_blas_ssyr2", (PyCFunction)_wrap_gsl_blas_ssyr2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssyr2(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_float const * X, gsl_vector_float const * Y, gsl_matrix_float * A) -> int"},
+	 { "gsl_blas_dsymv", (PyCFunction)_wrap_gsl_blas_dsymv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsymv(CBLAS_UPLO_t Uplo, double alpha, gsl_matrix const * A, gsl_vector const * X, double beta, gsl_vector * Y) -> int"},
+	 { "gsl_blas_dger", (PyCFunction)_wrap_gsl_blas_dger, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dger(double alpha, gsl_vector const * X, gsl_vector const * Y, gsl_matrix * A) -> int"},
+	 { "gsl_blas_dsyr", (PyCFunction)_wrap_gsl_blas_dsyr, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsyr(CBLAS_UPLO_t Uplo, double alpha, gsl_vector const * X, gsl_matrix * A) -> int"},
+	 { "gsl_blas_dsyr2", (PyCFunction)_wrap_gsl_blas_dsyr2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsyr2(CBLAS_UPLO_t Uplo, double alpha, gsl_vector const * X, gsl_vector const * Y, gsl_matrix * A) -> int"},
+	 { "gsl_blas_chemv", (PyCFunction)_wrap_gsl_blas_chemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_chemv(CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_vector_complex_float const * X, gsl_complex_float const beta, gsl_vector_complex_float * Y) -> int"},
+	 { "gsl_blas_cgeru", (PyCFunction)_wrap_gsl_blas_cgeru, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cgeru(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
+	 { "gsl_blas_cgerc", (PyCFunction)_wrap_gsl_blas_cgerc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cgerc(gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
+	 { "gsl_blas_cher", (PyCFunction)_wrap_gsl_blas_cher, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cher(CBLAS_UPLO_t Uplo, float alpha, gsl_vector_complex_float const * X, gsl_matrix_complex_float * A) -> int"},
+	 { "gsl_blas_cher2", (PyCFunction)_wrap_gsl_blas_cher2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cher2(CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_vector_complex_float const * X, gsl_vector_complex_float const * Y, gsl_matrix_complex_float * A) -> int"},
+	 { "gsl_blas_zhemv", (PyCFunction)_wrap_gsl_blas_zhemv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zhemv(CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_vector_complex const * X, gsl_complex const beta, gsl_vector_complex * Y) -> int"},
+	 { "gsl_blas_zgeru", (PyCFunction)_wrap_gsl_blas_zgeru, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zgeru(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
+	 { "gsl_blas_zgerc", (PyCFunction)_wrap_gsl_blas_zgerc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zgerc(gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
+	 { "gsl_blas_zher", (PyCFunction)_wrap_gsl_blas_zher, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zher(CBLAS_UPLO_t Uplo, double alpha, gsl_vector_complex const * X, gsl_matrix_complex * A) -> int"},
+	 { "gsl_blas_zher2", (PyCFunction)_wrap_gsl_blas_zher2, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zher2(CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_vector_complex const * X, gsl_vector_complex const * Y, gsl_matrix_complex * A) -> int"},
+	 { "gsl_blas_sgemm", (PyCFunction)_wrap_gsl_blas_sgemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_sgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
+	 { "gsl_blas_ssymm", (PyCFunction)_wrap_gsl_blas_ssymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
+	 { "gsl_blas_ssyrk", (PyCFunction)_wrap_gsl_blas_ssyrk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_float const * A, float beta, gsl_matrix_float * C) -> int"},
+	 { "gsl_blas_ssyr2k", (PyCFunction)_wrap_gsl_blas_ssyr2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ssyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_float const * A, gsl_matrix_float const * B, float beta, gsl_matrix_float * C) -> int"},
+	 { "gsl_blas_strmm", (PyCFunction)_wrap_gsl_blas_strmm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_strmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, float alpha, gsl_matrix_float const * A, gsl_matrix_float * B) -> int"},
+	 { "gsl_blas_strsm", (PyCFunction)_wrap_gsl_blas_strsm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_strsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, float alpha, gsl_matrix_float const * A, gsl_matrix_float * B) -> int"},
+	 { "gsl_blas_dgemm", (PyCFunction)_wrap_gsl_blas_dgemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
+	 { "gsl_blas_dsymm", (PyCFunction)_wrap_gsl_blas_dsymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
+	 { "gsl_blas_dsyrk", (PyCFunction)_wrap_gsl_blas_dsyrk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix const * A, double beta, gsl_matrix * C) -> int"},
+	 { "gsl_blas_dsyr2k", (PyCFunction)_wrap_gsl_blas_dsyr2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dsyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix const * A, gsl_matrix const * B, double beta, gsl_matrix * C) -> int"},
+	 { "gsl_blas_dtrmm", (PyCFunction)_wrap_gsl_blas_dtrmm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dtrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, double alpha, gsl_matrix const * A, gsl_matrix * B) -> int"},
+	 { "gsl_blas_dtrsm", (PyCFunction)_wrap_gsl_blas_dtrsm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_dtrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, double alpha, gsl_matrix const * A, gsl_matrix * B) -> int"},
+	 { "gsl_blas_cgemm", (PyCFunction)_wrap_gsl_blas_cgemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_csymm", (PyCFunction)_wrap_gsl_blas_csymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_csymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_csyrk", (PyCFunction)_wrap_gsl_blas_csyrk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_csyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_csyr2k", (PyCFunction)_wrap_gsl_blas_csyr2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_csyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_ctrmm", (PyCFunction)_wrap_gsl_blas_ctrmm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ctrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float * B) -> int"},
+	 { "gsl_blas_ctrsm", (PyCFunction)_wrap_gsl_blas_ctrsm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ctrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float * B) -> int"},
+	 { "gsl_blas_zgemm", (PyCFunction)_wrap_gsl_blas_zgemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zgemm(CBLAS_TRANSPOSE_t TransA, CBLAS_TRANSPOSE_t TransB, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_zsymm", (PyCFunction)_wrap_gsl_blas_zsymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zsymm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_zsyrk", (PyCFunction)_wrap_gsl_blas_zsyrk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zsyrk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_zsyr2k", (PyCFunction)_wrap_gsl_blas_zsyr2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zsyr2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_ztrmm", (PyCFunction)_wrap_gsl_blas_ztrmm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ztrmm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex * B) -> int"},
+	 { "gsl_blas_ztrsm", (PyCFunction)_wrap_gsl_blas_ztrsm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_ztrsm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t TransA, CBLAS_DIAG_t Diag, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex * B) -> int"},
+	 { "gsl_blas_chemm", (PyCFunction)_wrap_gsl_blas_chemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_chemm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, gsl_complex_float const beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_cherk", (PyCFunction)_wrap_gsl_blas_cherk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cherk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, float alpha, gsl_matrix_complex_float const * A, float beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_cher2k", (PyCFunction)_wrap_gsl_blas_cher2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_cher2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex_float const alpha, gsl_matrix_complex_float const * A, gsl_matrix_complex_float const * B, float beta, gsl_matrix_complex_float * C) -> int"},
+	 { "gsl_blas_zhemm", (PyCFunction)_wrap_gsl_blas_zhemm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zhemm(CBLAS_SIDE_t Side, CBLAS_UPLO_t Uplo, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, gsl_complex const beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_zherk", (PyCFunction)_wrap_gsl_blas_zherk, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zherk(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, double alpha, gsl_matrix_complex const * A, double beta, gsl_matrix_complex * C) -> int"},
+	 { "gsl_blas_zher2k", (PyCFunction)_wrap_gsl_blas_zher2k, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_blas_zher2k(CBLAS_UPLO_t Uplo, CBLAS_TRANSPOSE_t Trans, gsl_complex const alpha, gsl_matrix_complex const * A, gsl_matrix_complex const * B, double beta, gsl_matrix_complex * C) -> int"},
+	 { "new_gsl_eigen_symm_workspace", (PyCFunction)_wrap_new_gsl_eigen_symm_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_symm_workspace(size_t const n) -> gsl_eigen_symm_workspace"},
+	 { "delete_gsl_eigen_symm_workspace", _wrap_delete_gsl_eigen_symm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_symm_workspace(gsl_eigen_symm_workspace self)"},
+	 { "gsl_eigen_symm_workspace_size_get", _wrap_gsl_eigen_symm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_size_get(gsl_eigen_symm_workspace self) -> size_t"},
+	 { "gsl_eigen_symm_workspace_d_get", _wrap_gsl_eigen_symm_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_d_get(gsl_eigen_symm_workspace self) -> double *"},
+	 { "gsl_eigen_symm_workspace_sd_get", _wrap_gsl_eigen_symm_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_symm_workspace_sd_get(gsl_eigen_symm_workspace self) -> double *"},
+	 { "gsl_eigen_symm_workspace_swigregister", gsl_eigen_symm_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_symm_alloc", (PyCFunction)_wrap_gsl_eigen_symm_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symm_alloc(size_t const n) -> gsl_eigen_symm_workspace"},
+	 { "gsl_eigen_symm_free", (PyCFunction)_wrap_gsl_eigen_symm_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symm_free(gsl_eigen_symm_workspace w)"},
+	 { "gsl_eigen_symm", (PyCFunction)_wrap_gsl_eigen_symm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symm(gsl_matrix * A, gsl_vector * eval, gsl_eigen_symm_workspace w) -> int"},
+	 { "new_gsl_eigen_symmv_workspace", (PyCFunction)_wrap_new_gsl_eigen_symmv_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_symmv_workspace(size_t const n) -> gsl_eigen_symmv_workspace"},
+	 { "delete_gsl_eigen_symmv_workspace", _wrap_delete_gsl_eigen_symmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_symmv_workspace(gsl_eigen_symmv_workspace self)"},
+	 { "gsl_eigen_symmv_workspace_size_get", _wrap_gsl_eigen_symmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_size_get(gsl_eigen_symmv_workspace self) -> size_t"},
+	 { "gsl_eigen_symmv_workspace_d_get", _wrap_gsl_eigen_symmv_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_d_get(gsl_eigen_symmv_workspace self) -> double *"},
+	 { "gsl_eigen_symmv_workspace_sd_get", _wrap_gsl_eigen_symmv_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_sd_get(gsl_eigen_symmv_workspace self) -> double *"},
+	 { "gsl_eigen_symmv_workspace_gc_get", _wrap_gsl_eigen_symmv_workspace_gc_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_gc_get(gsl_eigen_symmv_workspace self) -> double *"},
+	 { "gsl_eigen_symmv_workspace_gs_get", _wrap_gsl_eigen_symmv_workspace_gs_get, METH_VARARGS, (char *)"gsl_eigen_symmv_workspace_gs_get(gsl_eigen_symmv_workspace self) -> double *"},
+	 { "gsl_eigen_symmv_workspace_swigregister", gsl_eigen_symmv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_symmv_alloc", (PyCFunction)_wrap_gsl_eigen_symmv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symmv_alloc(size_t const n) -> gsl_eigen_symmv_workspace"},
+	 { "gsl_eigen_symmv_free", (PyCFunction)_wrap_gsl_eigen_symmv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symmv_free(gsl_eigen_symmv_workspace w)"},
+	 { "gsl_eigen_symmv", (PyCFunction)_wrap_gsl_eigen_symmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symmv(gsl_matrix * A, gsl_vector * eval, gsl_matrix * evec, gsl_eigen_symmv_workspace w) -> int"},
+	 { "new_gsl_eigen_herm_workspace", (PyCFunction)_wrap_new_gsl_eigen_herm_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_herm_workspace(size_t const n) -> gsl_eigen_herm_workspace"},
+	 { "delete_gsl_eigen_herm_workspace", _wrap_delete_gsl_eigen_herm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_herm_workspace(gsl_eigen_herm_workspace self)"},
+	 { "gsl_eigen_herm_workspace_size_get", _wrap_gsl_eigen_herm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_size_get(gsl_eigen_herm_workspace self) -> size_t"},
+	 { "gsl_eigen_herm_workspace_d_get", _wrap_gsl_eigen_herm_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_d_get(gsl_eigen_herm_workspace self) -> double *"},
+	 { "gsl_eigen_herm_workspace_sd_get", _wrap_gsl_eigen_herm_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_sd_get(gsl_eigen_herm_workspace self) -> double *"},
+	 { "gsl_eigen_herm_workspace_tau_get", _wrap_gsl_eigen_herm_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_herm_workspace_tau_get(gsl_eigen_herm_workspace self) -> double *"},
+	 { "gsl_eigen_herm_workspace_swigregister", gsl_eigen_herm_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_herm_alloc", (PyCFunction)_wrap_gsl_eigen_herm_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_herm_alloc(size_t const n) -> gsl_eigen_herm_workspace"},
+	 { "gsl_eigen_herm_free", (PyCFunction)_wrap_gsl_eigen_herm_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_herm_free(gsl_eigen_herm_workspace w)"},
+	 { "gsl_eigen_herm", (PyCFunction)_wrap_gsl_eigen_herm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_herm(gsl_matrix_complex * A, gsl_vector * eval, gsl_eigen_herm_workspace w) -> int"},
+	 { "new_gsl_eigen_hermv_workspace", (PyCFunction)_wrap_new_gsl_eigen_hermv_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_hermv_workspace(size_t const n) -> gsl_eigen_hermv_workspace"},
+	 { "delete_gsl_eigen_hermv_workspace", _wrap_delete_gsl_eigen_hermv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_hermv_workspace(gsl_eigen_hermv_workspace self)"},
+	 { "gsl_eigen_hermv_workspace_size_get", _wrap_gsl_eigen_hermv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_size_get(gsl_eigen_hermv_workspace self) -> size_t"},
+	 { "gsl_eigen_hermv_workspace_d_get", _wrap_gsl_eigen_hermv_workspace_d_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_d_get(gsl_eigen_hermv_workspace self) -> double *"},
+	 { "gsl_eigen_hermv_workspace_sd_get", _wrap_gsl_eigen_hermv_workspace_sd_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_sd_get(gsl_eigen_hermv_workspace self) -> double *"},
+	 { "gsl_eigen_hermv_workspace_tau_get", _wrap_gsl_eigen_hermv_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_tau_get(gsl_eigen_hermv_workspace self) -> double *"},
+	 { "gsl_eigen_hermv_workspace_gc_get", _wrap_gsl_eigen_hermv_workspace_gc_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_gc_get(gsl_eigen_hermv_workspace self) -> double *"},
+	 { "gsl_eigen_hermv_workspace_gs_get", _wrap_gsl_eigen_hermv_workspace_gs_get, METH_VARARGS, (char *)"gsl_eigen_hermv_workspace_gs_get(gsl_eigen_hermv_workspace self) -> double *"},
+	 { "gsl_eigen_hermv_workspace_swigregister", gsl_eigen_hermv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_hermv_alloc", (PyCFunction)_wrap_gsl_eigen_hermv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_hermv_alloc(size_t const n) -> gsl_eigen_hermv_workspace"},
+	 { "gsl_eigen_hermv_free", (PyCFunction)_wrap_gsl_eigen_hermv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_hermv_free(gsl_eigen_hermv_workspace w)"},
+	 { "gsl_eigen_hermv", (PyCFunction)_wrap_gsl_eigen_hermv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_hermv(gsl_matrix_complex * A, gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_hermv_workspace w) -> int"},
+	 { "new_gsl_eigen_francis_workspace", _wrap_new_gsl_eigen_francis_workspace, METH_VARARGS, (char *)"new_gsl_eigen_francis_workspace() -> gsl_eigen_francis_workspace"},
+	 { "delete_gsl_eigen_francis_workspace", _wrap_delete_gsl_eigen_francis_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_francis_workspace(gsl_eigen_francis_workspace self)"},
+	 { "gsl_eigen_francis_workspace_size_get", _wrap_gsl_eigen_francis_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_size_get(gsl_eigen_francis_workspace self) -> size_t"},
+	 { "gsl_eigen_francis_workspace_max_iterations_get", _wrap_gsl_eigen_francis_workspace_max_iterations_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_max_iterations_get(gsl_eigen_francis_workspace self) -> size_t"},
+	 { "gsl_eigen_francis_workspace_n_iter_get", _wrap_gsl_eigen_francis_workspace_n_iter_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_n_iter_get(gsl_eigen_francis_workspace self) -> size_t"},
+	 { "gsl_eigen_francis_workspace_n_evals_get", _wrap_gsl_eigen_francis_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_n_evals_get(gsl_eigen_francis_workspace self) -> size_t"},
+	 { "gsl_eigen_francis_workspace_compute_t_get", _wrap_gsl_eigen_francis_workspace_compute_t_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_compute_t_get(gsl_eigen_francis_workspace self) -> int"},
+	 { "gsl_eigen_francis_workspace_H_get", _wrap_gsl_eigen_francis_workspace_H_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_H_get(gsl_eigen_francis_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_francis_workspace_Z_get", _wrap_gsl_eigen_francis_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_francis_workspace_Z_get(gsl_eigen_francis_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_francis_workspace_swigregister", gsl_eigen_francis_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_francis_alloc", _wrap_gsl_eigen_francis_alloc, METH_VARARGS, (char *)"gsl_eigen_francis_alloc() -> gsl_eigen_francis_workspace"},
+	 { "gsl_eigen_francis_free", (PyCFunction)_wrap_gsl_eigen_francis_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_francis_free(gsl_eigen_francis_workspace w)"},
+	 { "gsl_eigen_francis_T", (PyCFunction)_wrap_gsl_eigen_francis_T, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_francis_T(int const compute_t, gsl_eigen_francis_workspace w)"},
+	 { "gsl_eigen_francis", (PyCFunction)_wrap_gsl_eigen_francis, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_francis(gsl_matrix * H, gsl_vector_complex * eval, gsl_eigen_francis_workspace w) -> int"},
+	 { "gsl_eigen_francis_Z", (PyCFunction)_wrap_gsl_eigen_francis_Z, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_francis_Z(gsl_matrix * H, gsl_vector_complex * eval, gsl_matrix * Z, gsl_eigen_francis_workspace w) -> int"},
+	 { "new_gsl_eigen_nonsymm_workspace", (PyCFunction)_wrap_new_gsl_eigen_nonsymm_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_nonsymm_workspace(size_t const n) -> gsl_eigen_nonsymm_workspace"},
+	 { "delete_gsl_eigen_nonsymm_workspace", _wrap_delete_gsl_eigen_nonsymm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_nonsymm_workspace(gsl_eigen_nonsymm_workspace self)"},
+	 { "gsl_eigen_nonsymm_workspace_params", (PyCFunction)_wrap_gsl_eigen_nonsymm_workspace_params, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_workspace_params(gsl_eigen_nonsymm_workspace self, int const compute_t, int const balance) -> gsl_error_flag_drop"},
+	 { "gsl_eigen_nonsymm_workspace_size_get", _wrap_gsl_eigen_nonsymm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_size_get(gsl_eigen_nonsymm_workspace self) -> size_t"},
+	 { "gsl_eigen_nonsymm_workspace_diag_get", _wrap_gsl_eigen_nonsymm_workspace_diag_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_diag_get(gsl_eigen_nonsymm_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_nonsymm_workspace_tau_get", _wrap_gsl_eigen_nonsymm_workspace_tau_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_tau_get(gsl_eigen_nonsymm_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_nonsymm_workspace_Z_get", _wrap_gsl_eigen_nonsymm_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_Z_get(gsl_eigen_nonsymm_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_nonsymm_workspace_do_balance_get", _wrap_gsl_eigen_nonsymm_workspace_do_balance_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_do_balance_get(gsl_eigen_nonsymm_workspace self) -> int"},
+	 { "gsl_eigen_nonsymm_workspace_n_evals_get", _wrap_gsl_eigen_nonsymm_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_n_evals_get(gsl_eigen_nonsymm_workspace self) -> size_t"},
+	 { "gsl_eigen_nonsymm_workspace_francis_workspace_p_get", _wrap_gsl_eigen_nonsymm_workspace_francis_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_nonsymm_workspace_francis_workspace_p_get(gsl_eigen_nonsymm_workspace self) -> gsl_eigen_francis_workspace"},
+	 { "gsl_eigen_nonsymm_workspace_swigregister", gsl_eigen_nonsymm_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_nonsymm_alloc", (PyCFunction)_wrap_gsl_eigen_nonsymm_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_alloc(size_t const n) -> gsl_eigen_nonsymm_workspace"},
+	 { "gsl_eigen_nonsymm_free", (PyCFunction)_wrap_gsl_eigen_nonsymm_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_free(gsl_eigen_nonsymm_workspace w)"},
+	 { "gsl_eigen_nonsymm_params", (PyCFunction)_wrap_gsl_eigen_nonsymm_params, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_params(int const compute_t, int const balance, gsl_eigen_nonsymm_workspace w)"},
+	 { "gsl_eigen_nonsymm", (PyCFunction)_wrap_gsl_eigen_nonsymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm(gsl_matrix * A, gsl_vector_complex * eval, gsl_eigen_nonsymm_workspace w) -> int"},
+	 { "gsl_eigen_nonsymm_Z", (PyCFunction)_wrap_gsl_eigen_nonsymm_Z, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymm_Z(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix * Z, gsl_eigen_nonsymm_workspace w) -> int"},
+	 { "gsl_eigen_nonsymmv_workspace_size_get", _wrap_gsl_eigen_nonsymmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_size_get(gsl_eigen_nonsymmv_workspace self) -> size_t"},
+	 { "gsl_eigen_nonsymmv_workspace_work_get", _wrap_gsl_eigen_nonsymmv_workspace_work_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_nonsymmv_workspace_work2_get", _wrap_gsl_eigen_nonsymmv_workspace_work2_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work2_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_nonsymmv_workspace_work3_get", _wrap_gsl_eigen_nonsymmv_workspace_work3_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_work3_get(gsl_eigen_nonsymmv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_nonsymmv_workspace_Z_get", _wrap_gsl_eigen_nonsymmv_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_Z_get(gsl_eigen_nonsymmv_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get", _wrap_gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_nonsymmv_workspace_nonsymm_workspace_p_get(gsl_eigen_nonsymmv_workspace self) -> gsl_eigen_nonsymm_workspace"},
+	 { "new_gsl_eigen_nonsymmv_workspace", _wrap_new_gsl_eigen_nonsymmv_workspace, METH_VARARGS, (char *)"new_gsl_eigen_nonsymmv_workspace() -> gsl_eigen_nonsymmv_workspace"},
+	 { "delete_gsl_eigen_nonsymmv_workspace", _wrap_delete_gsl_eigen_nonsymmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_nonsymmv_workspace(gsl_eigen_nonsymmv_workspace self)"},
+	 { "gsl_eigen_nonsymmv_workspace_swigregister", gsl_eigen_nonsymmv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_nonsymmv_alloc", (PyCFunction)_wrap_gsl_eigen_nonsymmv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_alloc(size_t const n) -> gsl_eigen_nonsymmv_workspace"},
+	 { "gsl_eigen_nonsymmv_free", (PyCFunction)_wrap_gsl_eigen_nonsymmv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_free(gsl_eigen_nonsymmv_workspace w)"},
+	 { "gsl_eigen_nonsymmv", (PyCFunction)_wrap_gsl_eigen_nonsymmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_eigen_nonsymmv_workspace w) -> int"},
+	 { "gsl_eigen_nonsymmv_Z", (PyCFunction)_wrap_gsl_eigen_nonsymmv_Z, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_Z(gsl_matrix * A, gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_matrix * Z, gsl_eigen_nonsymmv_workspace w) -> int"},
+	 { "gsl_eigen_gensymm_workspace_size_get", _wrap_gsl_eigen_gensymm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gensymm_workspace_size_get(gsl_eigen_gensymm_workspace self) -> size_t"},
+	 { "gsl_eigen_gensymm_workspace_symm_workspace_p_get", _wrap_gsl_eigen_gensymm_workspace_symm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_gensymm_workspace_symm_workspace_p_get(gsl_eigen_gensymm_workspace self) -> gsl_eigen_symm_workspace"},
+	 { "new_gsl_eigen_gensymm_workspace", _wrap_new_gsl_eigen_gensymm_workspace, METH_VARARGS, (char *)"new_gsl_eigen_gensymm_workspace() -> gsl_eigen_gensymm_workspace"},
+	 { "delete_gsl_eigen_gensymm_workspace", _wrap_delete_gsl_eigen_gensymm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gensymm_workspace(gsl_eigen_gensymm_workspace self)"},
+	 { "gsl_eigen_gensymm_workspace_swigregister", gsl_eigen_gensymm_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_gensymm_alloc", (PyCFunction)_wrap_gsl_eigen_gensymm_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymm_alloc(size_t const n) -> gsl_eigen_gensymm_workspace"},
+	 { "gsl_eigen_gensymm_free", (PyCFunction)_wrap_gsl_eigen_gensymm_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymm_free(gsl_eigen_gensymm_workspace w)"},
+	 { "gsl_eigen_gensymm", (PyCFunction)_wrap_gsl_eigen_gensymm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymm(gsl_matrix * A, gsl_matrix * B, gsl_vector * eval, gsl_eigen_gensymm_workspace w) -> int"},
+	 { "gsl_eigen_gensymm_standardize", (PyCFunction)_wrap_gsl_eigen_gensymm_standardize, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymm_standardize(gsl_matrix * A, gsl_matrix const * B) -> int"},
+	 { "gsl_eigen_gensymmv_workspace_size_get", _wrap_gsl_eigen_gensymmv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gensymmv_workspace_size_get(gsl_eigen_gensymmv_workspace self) -> size_t"},
+	 { "gsl_eigen_gensymmv_workspace_symmv_workspace_p_get", _wrap_gsl_eigen_gensymmv_workspace_symmv_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_gensymmv_workspace_symmv_workspace_p_get(gsl_eigen_gensymmv_workspace self) -> gsl_eigen_symmv_workspace"},
+	 { "new_gsl_eigen_gensymmv_workspace", _wrap_new_gsl_eigen_gensymmv_workspace, METH_VARARGS, (char *)"new_gsl_eigen_gensymmv_workspace() -> gsl_eigen_gensymmv_workspace"},
+	 { "delete_gsl_eigen_gensymmv_workspace", _wrap_delete_gsl_eigen_gensymmv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gensymmv_workspace(gsl_eigen_gensymmv_workspace self)"},
+	 { "gsl_eigen_gensymmv_workspace_swigregister", gsl_eigen_gensymmv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_gensymmv_alloc", (PyCFunction)_wrap_gsl_eigen_gensymmv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_alloc(size_t const n) -> gsl_eigen_gensymmv_workspace"},
+	 { "gsl_eigen_gensymmv_free", (PyCFunction)_wrap_gsl_eigen_gensymmv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_free(gsl_eigen_gensymmv_workspace w)"},
+	 { "gsl_eigen_gensymmv", (PyCFunction)_wrap_gsl_eigen_gensymmv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymmv(gsl_matrix * A, gsl_matrix * B, gsl_vector * eval, gsl_matrix * evec, gsl_eigen_gensymmv_workspace w) -> int"},
+	 { "new_gsl_eigen_genherm_workspace", (PyCFunction)_wrap_new_gsl_eigen_genherm_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_genherm_workspace(size_t const n) -> gsl_eigen_genherm_workspace"},
+	 { "delete_gsl_eigen_genherm_workspace", _wrap_delete_gsl_eigen_genherm_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genherm_workspace(gsl_eigen_genherm_workspace self)"},
+	 { "gsl_eigen_genherm_workspace_size_get", _wrap_gsl_eigen_genherm_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genherm_workspace_size_get(gsl_eigen_genherm_workspace self) -> size_t"},
+	 { "gsl_eigen_genherm_workspace_herm_workspace_p_get", _wrap_gsl_eigen_genherm_workspace_herm_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genherm_workspace_herm_workspace_p_get(gsl_eigen_genherm_workspace self) -> gsl_eigen_herm_workspace"},
+	 { "gsl_eigen_genherm_workspace_swigregister", gsl_eigen_genherm_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_genherm_alloc", (PyCFunction)_wrap_gsl_eigen_genherm_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genherm_alloc(size_t const n) -> gsl_eigen_genherm_workspace"},
+	 { "gsl_eigen_genherm_free", (PyCFunction)_wrap_gsl_eigen_genherm_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genherm_free(gsl_eigen_genherm_workspace w)"},
+	 { "gsl_eigen_genherm", (PyCFunction)_wrap_gsl_eigen_genherm, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genherm(gsl_matrix_complex * A, gsl_matrix_complex * B, gsl_vector * eval, gsl_eigen_genherm_workspace w) -> int"},
+	 { "gsl_eigen_genherm_standardize", (PyCFunction)_wrap_gsl_eigen_genherm_standardize, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genherm_standardize(gsl_matrix_complex * A, gsl_matrix_complex const * B) -> int"},
+	 { "new_gsl_eigen_genhermv_workspace", (PyCFunction)_wrap_new_gsl_eigen_genhermv_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_genhermv_workspace(size_t const n) -> gsl_eigen_genhermv_workspace"},
+	 { "delete_gsl_eigen_genhermv_workspace", _wrap_delete_gsl_eigen_genhermv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genhermv_workspace(gsl_eigen_genhermv_workspace self)"},
+	 { "gsl_eigen_genhermv_workspace_size_get", _wrap_gsl_eigen_genhermv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genhermv_workspace_size_get(gsl_eigen_genhermv_workspace self) -> size_t"},
+	 { "gsl_eigen_genhermv_workspace_hermv_workspace_p_get", _wrap_gsl_eigen_genhermv_workspace_hermv_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genhermv_workspace_hermv_workspace_p_get(gsl_eigen_genhermv_workspace self) -> gsl_eigen_hermv_workspace"},
+	 { "gsl_eigen_genhermv_workspace_swigregister", gsl_eigen_genhermv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_genhermv_alloc", (PyCFunction)_wrap_gsl_eigen_genhermv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genhermv_alloc(size_t const n) -> gsl_eigen_genhermv_workspace"},
+	 { "gsl_eigen_genhermv_free", (PyCFunction)_wrap_gsl_eigen_genhermv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genhermv_free(gsl_eigen_genhermv_workspace w)"},
+	 { "gsl_eigen_genhermv", (PyCFunction)_wrap_gsl_eigen_genhermv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genhermv(gsl_matrix_complex * A, gsl_matrix_complex * B, gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_genhermv_workspace w) -> int"},
+	 { "new_gsl_eigen_gen_workspace", (PyCFunction)_wrap_new_gsl_eigen_gen_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_gen_workspace(size_t const n) -> gsl_eigen_gen_workspace"},
+	 { "delete_gsl_eigen_gen_workspace", _wrap_delete_gsl_eigen_gen_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_gen_workspace(gsl_eigen_gen_workspace self)"},
+	 { "gsl_eigen_gen_workspace_size_get", _wrap_gsl_eigen_gen_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_size_get(gsl_eigen_gen_workspace self) -> size_t"},
+	 { "gsl_eigen_gen_workspace_work_get", _wrap_gsl_eigen_gen_workspace_work_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_work_get(gsl_eigen_gen_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_gen_workspace_n_evals_get", _wrap_gsl_eigen_gen_workspace_n_evals_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_n_evals_get(gsl_eigen_gen_workspace self) -> size_t"},
+	 { "gsl_eigen_gen_workspace_max_iterations_get", _wrap_gsl_eigen_gen_workspace_max_iterations_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_max_iterations_get(gsl_eigen_gen_workspace self) -> size_t"},
+	 { "gsl_eigen_gen_workspace_n_iter_get", _wrap_gsl_eigen_gen_workspace_n_iter_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_n_iter_get(gsl_eigen_gen_workspace self) -> size_t"},
+	 { "gsl_eigen_gen_workspace_eshift_get", _wrap_gsl_eigen_gen_workspace_eshift_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_eshift_get(gsl_eigen_gen_workspace self) -> double"},
+	 { "gsl_eigen_gen_workspace_needtop_get", _wrap_gsl_eigen_gen_workspace_needtop_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_needtop_get(gsl_eigen_gen_workspace self) -> int"},
+	 { "gsl_eigen_gen_workspace_atol_get", _wrap_gsl_eigen_gen_workspace_atol_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_atol_get(gsl_eigen_gen_workspace self) -> double"},
+	 { "gsl_eigen_gen_workspace_btol_get", _wrap_gsl_eigen_gen_workspace_btol_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_btol_get(gsl_eigen_gen_workspace self) -> double"},
+	 { "gsl_eigen_gen_workspace_ascale_get", _wrap_gsl_eigen_gen_workspace_ascale_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_ascale_get(gsl_eigen_gen_workspace self) -> double"},
+	 { "gsl_eigen_gen_workspace_bscale_get", _wrap_gsl_eigen_gen_workspace_bscale_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_bscale_get(gsl_eigen_gen_workspace self) -> double"},
+	 { "gsl_eigen_gen_workspace_H_get", _wrap_gsl_eigen_gen_workspace_H_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_H_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_gen_workspace_R_get", _wrap_gsl_eigen_gen_workspace_R_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_R_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_gen_workspace_compute_s_get", _wrap_gsl_eigen_gen_workspace_compute_s_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_compute_s_get(gsl_eigen_gen_workspace self) -> int"},
+	 { "gsl_eigen_gen_workspace_compute_t_get", _wrap_gsl_eigen_gen_workspace_compute_t_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_compute_t_get(gsl_eigen_gen_workspace self) -> int"},
+	 { "gsl_eigen_gen_workspace_Q_get", _wrap_gsl_eigen_gen_workspace_Q_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_Q_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_gen_workspace_Z_get", _wrap_gsl_eigen_gen_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_gen_workspace_Z_get(gsl_eigen_gen_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_gen_workspace_swigregister", gsl_eigen_gen_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_gen_alloc", (PyCFunction)_wrap_gsl_eigen_gen_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gen_alloc(size_t const n) -> gsl_eigen_gen_workspace"},
+	 { "gsl_eigen_gen_free", (PyCFunction)_wrap_gsl_eigen_gen_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gen_free(gsl_eigen_gen_workspace w)"},
+	 { "gsl_eigen_gen_params", (PyCFunction)_wrap_gsl_eigen_gen_params, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gen_params(int const compute_s, int const compute_t, int const balance, gsl_eigen_gen_workspace w)"},
+	 { "gsl_eigen_gen", (PyCFunction)_wrap_gsl_eigen_gen, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gen(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_eigen_gen_workspace w) -> int"},
+	 { "gsl_eigen_gen_QZ", (PyCFunction)_wrap_gsl_eigen_gen_QZ, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gen_QZ(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix * Q, gsl_matrix * Z, gsl_eigen_gen_workspace w) -> int"},
+	 { "new_gsl_eigen_genv_workspace", (PyCFunction)_wrap_new_gsl_eigen_genv_workspace, METH_VARARGS|METH_KEYWORDS, (char *)"new_gsl_eigen_genv_workspace(size_t const n) -> gsl_eigen_genv_workspace"},
+	 { "delete_gsl_eigen_genv_workspace", _wrap_delete_gsl_eigen_genv_workspace, METH_VARARGS, (char *)"delete_gsl_eigen_genv_workspace(gsl_eigen_genv_workspace self)"},
+	 { "gsl_eigen_genv_workspace_size_get", _wrap_gsl_eigen_genv_workspace_size_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_size_get(gsl_eigen_genv_workspace self) -> size_t"},
+	 { "gsl_eigen_genv_workspace_work1_get", _wrap_gsl_eigen_genv_workspace_work1_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work1_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_work2_get", _wrap_gsl_eigen_genv_workspace_work2_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work2_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_work3_get", _wrap_gsl_eigen_genv_workspace_work3_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work3_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_work4_get", _wrap_gsl_eigen_genv_workspace_work4_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work4_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_work5_get", _wrap_gsl_eigen_genv_workspace_work5_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work5_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_work6_get", _wrap_gsl_eigen_genv_workspace_work6_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_work6_get(gsl_eigen_genv_workspace self) -> gsl_vector *"},
+	 { "gsl_eigen_genv_workspace_Q_get", _wrap_gsl_eigen_genv_workspace_Q_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_Q_get(gsl_eigen_genv_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_genv_workspace_Z_get", _wrap_gsl_eigen_genv_workspace_Z_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_Z_get(gsl_eigen_genv_workspace self) -> gsl_matrix *"},
+	 { "gsl_eigen_genv_workspace_gen_workspace_p_get", _wrap_gsl_eigen_genv_workspace_gen_workspace_p_get, METH_VARARGS, (char *)"gsl_eigen_genv_workspace_gen_workspace_p_get(gsl_eigen_genv_workspace self) -> gsl_eigen_gen_workspace"},
+	 { "gsl_eigen_genv_workspace_swigregister", gsl_eigen_genv_workspace_swigregister, METH_VARARGS, NULL},
+	 { "gsl_eigen_genv_alloc", (PyCFunction)_wrap_gsl_eigen_genv_alloc, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genv_alloc(size_t const n) -> gsl_eigen_genv_workspace"},
+	 { "gsl_eigen_genv_free", (PyCFunction)_wrap_gsl_eigen_genv_free, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genv_free(gsl_eigen_genv_workspace w)"},
+	 { "gsl_eigen_genv", (PyCFunction)_wrap_gsl_eigen_genv, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genv(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_eigen_genv_workspace w) -> int"},
+	 { "gsl_eigen_genv_QZ", (PyCFunction)_wrap_gsl_eigen_genv_QZ, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genv_QZ(gsl_matrix * A, gsl_matrix * B, gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_matrix * Q, gsl_matrix * Z, gsl_eigen_genv_workspace w) -> int"},
+	 { "gsl_eigen_symmv_sort", (PyCFunction)_wrap_gsl_eigen_symmv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_symmv_sort(gsl_vector * eval, gsl_matrix * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_eigen_hermv_sort", (PyCFunction)_wrap_gsl_eigen_hermv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_hermv_sort(gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_eigen_nonsymmv_sort", (PyCFunction)_wrap_gsl_eigen_nonsymmv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_nonsymmv_sort(gsl_vector_complex * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_eigen_gensymmv_sort", (PyCFunction)_wrap_gsl_eigen_gensymmv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_gensymmv_sort(gsl_vector * eval, gsl_matrix * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_eigen_genhermv_sort", (PyCFunction)_wrap_gsl_eigen_genhermv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genhermv_sort(gsl_vector * eval, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_eigen_genv_sort", (PyCFunction)_wrap_gsl_eigen_genv_sort, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_genv_sort(gsl_vector_complex * alpha, gsl_vector * beta, gsl_matrix_complex * evec, gsl_eigen_sort_t sort_type) -> int"},
+	 { "gsl_schur_gen_eigvals", (PyCFunction)_wrap_gsl_schur_gen_eigvals, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_schur_gen_eigvals(gsl_matrix const * A, gsl_matrix const * B, double * wr1, double * wr2, double * wi, double * scale1, double * scale2) -> int"},
+	 { "gsl_schur_solve_equation", (PyCFunction)_wrap_gsl_schur_solve_equation, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_schur_solve_equation(double ca, gsl_matrix const * A, double z, double d1, double d2, gsl_vector const * b, gsl_vector * x, double * s, double * xnorm, double smin) -> int"},
+	 { "gsl_schur_solve_equation_z", (PyCFunction)_wrap_gsl_schur_solve_equation_z, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_schur_solve_equation_z(double ca, gsl_matrix const * A, gsl_complex * z, double d1, double d2, gsl_vector_complex const * b, gsl_vector_complex * x, double * s, double * xnorm, double smin) -> int"},
+	 { "gsl_eigen_jacobi", (PyCFunction)_wrap_gsl_eigen_jacobi, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_jacobi(gsl_matrix * matrix, gsl_vector * eval, gsl_matrix * evec, unsigned int max_rot, unsigned int * nrot) -> int"},
+	 { "gsl_eigen_invert_jacobi", (PyCFunction)_wrap_gsl_eigen_invert_jacobi, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_eigen_invert_jacobi(gsl_matrix const * matrix, gsl_matrix * ainv, unsigned int max_rot) -> int"},
+	 { "new_gsl_interp_accel", _wrap_new_gsl_interp_accel, METH_VARARGS, (char *)"new_gsl_interp_accel() -> gsl_interp_accel"},
+	 { "delete_gsl_interp_accel", _wrap_delete_gsl_interp_accel, METH_VARARGS, (char *)"delete_gsl_interp_accel(gsl_interp_accel self)"},
+	 { "gsl_interp_accel_reset", _wrap_gsl_interp_accel_reset, METH_VARARGS, (char *)"gsl_interp_accel_reset(gsl_interp_accel self) -> gsl_error_flag_drop"},
+	 { "gsl_interp_accel_find", (PyCFunction)_wrap_gsl_interp_accel_find, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_interp_accel_find(gsl_interp_accel self, double const [] x_array, double x) -> size_t"},
+	 { "gsl_interp_accel_tocobject", _wrap_gsl_interp_accel_tocobject, METH_VARARGS, (char *)"gsl_interp_accel_tocobject(gsl_interp_accel self) -> PyObject *"},
+	 { "gsl_interp_accel_swigregister", gsl_interp_accel_swigregister, METH_VARARGS, NULL},
+	 { "new_pygsl_spline", (PyCFunction)_wrap_new_pygsl_spline, METH_VARARGS|METH_KEYWORDS, (char *)"new_pygsl_spline(gsl_interp_type const * T, size_t n) -> pygsl_spline"},
+	 { "delete_pygsl_spline", _wrap_delete_pygsl_spline, METH_VARARGS, (char *)"delete_pygsl_spline(pygsl_spline self)"},
+	 { "pygsl_spline_accel_reset", _wrap_pygsl_spline_accel_reset, METH_VARARGS, (char *)"pygsl_spline_accel_reset(pygsl_spline self) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_accel_find", (PyCFunction)_wrap_pygsl_spline_accel_find, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_accel_find(pygsl_spline self, double x) -> size_t"},
+	 { "pygsl_spline_tocobject", _wrap_pygsl_spline_tocobject, METH_VARARGS, (char *)"pygsl_spline_tocobject(pygsl_spline self) -> PyObject *"},
+	 { "pygsl_spline_init", (PyCFunction)_wrap_pygsl_spline_init, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_init(pygsl_spline self, double const [] xa) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_eval", (PyCFunction)_wrap_pygsl_spline_eval, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval(pygsl_spline self, double IN) -> double"},
+	 { "pygsl_spline_eval_deriv_e", (PyCFunction)_wrap_pygsl_spline_eval_deriv_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_eval_deriv", (PyCFunction)_wrap_pygsl_spline_eval_deriv, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv(pygsl_spline self, double IN) -> double"},
+	 { "pygsl_spline_eval_deriv2_e", (PyCFunction)_wrap_pygsl_spline_eval_deriv2_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_eval_deriv2", (PyCFunction)_wrap_pygsl_spline_eval_deriv2, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2(pygsl_spline self, double IN) -> double"},
+	 { "pygsl_spline_eval_integ", (PyCFunction)_wrap_pygsl_spline_eval_integ, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_integ(pygsl_spline self, double a, double b) -> double"},
+	 { "pygsl_spline_eval_integ_e", (PyCFunction)_wrap_pygsl_spline_eval_integ_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_e(pygsl_spline self, double a, double b) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_eval_e", (PyCFunction)_wrap_pygsl_spline_eval_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_e(pygsl_spline self, double IN) -> gsl_error_flag_drop"},
+	 { "pygsl_spline_eval_vector", (PyCFunction)_wrap_pygsl_spline_eval_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_e_vector", (PyCFunction)_wrap_pygsl_spline_eval_e_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_deriv_vector", (PyCFunction)_wrap_pygsl_spline_eval_deriv_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_deriv2_vector", (PyCFunction)_wrap_pygsl_spline_eval_deriv2_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_deriv_e_vector", (PyCFunction)_wrap_pygsl_spline_eval_deriv_e_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_deriv2_e_vector", (PyCFunction)_wrap_pygsl_spline_eval_deriv2_e_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_deriv2_e_vector(pygsl_spline self, gsl_vector const * IN) -> PyObject *"},
+	 { "pygsl_spline_eval_integ_vector", (PyCFunction)_wrap_pygsl_spline_eval_integ_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_vector(pygsl_spline self, gsl_vector const * IN, gsl_vector const * IN2) -> PyObject *"},
+	 { "pygsl_spline_eval_integ_e_vector", (PyCFunction)_wrap_pygsl_spline_eval_integ_e_vector, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_spline_eval_integ_e_vector(pygsl_spline self, gsl_vector const * IN, gsl_vector const * IN2) -> PyObject *"},
+	 { "pygsl_spline_name", _wrap_pygsl_spline_name, METH_VARARGS, (char *)"pygsl_spline_name(pygsl_spline self) -> char const *"},
+	 { "pygsl_spline_min_size", _wrap_pygsl_spline_min_size, METH_VARARGS, (char *)"pygsl_spline_min_size(pygsl_spline self) -> unsigned int"},
+	 { "pygsl_spline_swigregister", pygsl_spline_swigregister, METH_VARARGS, NULL},
+	 { "new_pygsl_interp", (PyCFunction)_wrap_new_pygsl_interp, METH_VARARGS|METH_KEYWORDS, (char *)"new_pygsl_interp(gsl_interp_type const * T, size_t n) -> pygsl_interp"},
+	 { "delete_pygsl_interp", _wrap_delete_pygsl_interp, METH_VARARGS, (char *)"delete_pygsl_interp(pygsl_interp self)"},
+	 { "pygsl_interp_init", (PyCFunction)_wrap_pygsl_interp_init, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_init(pygsl_interp self, PyObject * x, PyObject * y) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_name", _wrap_pygsl_interp_name, METH_VARARGS, (char *)"pygsl_interp_name(pygsl_interp self) -> char const *"},
+	 { "pygsl_interp_min_size", _wrap_pygsl_interp_min_size, METH_VARARGS, (char *)"pygsl_interp_min_size(pygsl_interp self) -> unsigned int"},
+	 { "pygsl_interp_eval_e", (PyCFunction)_wrap_pygsl_interp_eval_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_eval", (PyCFunction)_wrap_pygsl_interp_eval, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval(pygsl_interp self, double x) -> double"},
+	 { "pygsl_interp_eval_deriv_e", (PyCFunction)_wrap_pygsl_interp_eval_deriv_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_eval_deriv", (PyCFunction)_wrap_pygsl_interp_eval_deriv, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv(pygsl_interp self, double x) -> double"},
+	 { "pygsl_interp_eval_deriv2_e", (PyCFunction)_wrap_pygsl_interp_eval_deriv2_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv2_e(pygsl_interp self, double x) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_eval_deriv2", (PyCFunction)_wrap_pygsl_interp_eval_deriv2, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_deriv2(pygsl_interp self, double x) -> double"},
+	 { "pygsl_interp_eval_integ_e", (PyCFunction)_wrap_pygsl_interp_eval_integ_e, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_integ_e(pygsl_interp self, double a, double b) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_eval_integ", (PyCFunction)_wrap_pygsl_interp_eval_integ, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_eval_integ(pygsl_interp self, double a, double b) -> double"},
+	 { "pygsl_interp_accel_reset", _wrap_pygsl_interp_accel_reset, METH_VARARGS, (char *)"pygsl_interp_accel_reset(pygsl_interp self) -> gsl_error_flag_drop"},
+	 { "pygsl_interp_accel_find", (PyCFunction)_wrap_pygsl_interp_accel_find, METH_VARARGS|METH_KEYWORDS, (char *)"pygsl_interp_accel_find(pygsl_interp self, double x) -> size_t"},
+	 { "pygsl_interp_swigregister", pygsl_interp_swigregister, METH_VARARGS, NULL},
+	 { "gsl_interp_bsearch", (PyCFunction)_wrap_gsl_interp_bsearch, METH_VARARGS|METH_KEYWORDS, (char *)"gsl_interp_bsearch(double const [] x_array, double x, size_t index_lo, size_t index_hi) -> size_t"},
 	 { NULL, NULL, 0, NULL }
 };
 
@@ -40938,9 +41127,9 @@ extern "C" {
             char *ndoc = (char*)malloc(ldoc + lptr + 10);
             if (ndoc) {
               char *buff = ndoc;
-              strncpy(buff, methods[i].ml_doc, ldoc);
+              memcpy(buff, methods[i].ml_doc, ldoc);
               buff += ldoc;
-              strncpy(buff, "swig_ptr: ", 10);
+              memcpy(buff, "swig_ptr: ", 10);
               buff += 10;
               SWIG_PackVoidPtr(buff, ptr, ty->name, lptr);
               methods[i].ml_doc = ndoc;
@@ -41002,8 +41191,8 @@ SWIG_init(void) {
     (char *)"this", &SwigPyBuiltin_ThisClosure, NULL, NULL, NULL
   };
   static SwigPyGetSet thisown_getset_closure = {
-    (PyCFunction) SwigPyObject_own,
-    (PyCFunction) SwigPyObject_own
+    SwigPyObject_own,
+    SwigPyObject_own
   };
   static PyGetSetDef thisown_getset_def = {
     (char *)"thisown", SwigPyBuiltin_GetterClosure, SwigPyBuiltin_SetterClosure, NULL, &thisown_getset_closure

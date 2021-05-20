@@ -5,9 +5,7 @@ import distutils.log
 import setuptools
 import subprocess
 from distutils.file_util import copy_file
-import gsl_Config
 from gsl_Location import gsl_Location_File
-import gsl_Location
 
 _Command = distutils.cmd.Command
 class gsl_CodeGenerator(_Command):
@@ -15,7 +13,6 @@ class gsl_CodeGenerator(_Command):
   """
 
   description = 'Code generator for GSL'
-  user_options = []
 
   def __init__(self, *args, **kws):
     _Command.__init__(self, *args, **kws)
@@ -49,7 +46,7 @@ class gsl_CodeGenerator(_Command):
     """
     inc = []
 
-    for a_inc in gsl_Config.get_gsl_include_dirs():
+    for a_inc in gsl_Location.get_gsl_include_dirs():
       inc.append('-I' + a_inc)
 
     command = [gsl_Location.get_swig()] + inc + ["-xml", t_file]
@@ -108,11 +105,4 @@ class gsl_CodeGenerator(_Command):
     #if self.pylint_rcfile:
     #  command.append('--rcfile=%s' % self.pylint_rcfile)
     self._create_ufunc_wrapper()
-
-  def initialize_options(self):
-    self.commands = []
-
-  def finalize_options(self):
-    for c in self.commands:
-      c.finalize_options()
 

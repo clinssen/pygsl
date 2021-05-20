@@ -46,9 +46,9 @@
   }  
   #else /* _PYGSL_GSL_HAS_MULTIFIT_NLIN_FDFSOLVER_JAC */
   #ifndef _PYGSL_GSL_HAS_MULTIFIT_NLIN_FDFSOLVER_STRUCT_MEMBER_J
-  #error automatically generater header did not define that the function gsl_multifit_fdfsolver_jac  
+  #error automatically generated header did not define that the function gsl_multifit_fdfsolver_jac
   #error was available (GSL 2.x). but then the gsl_multifit_fdfsolver struct should contain
-  #error a member J which was not found neither ... 
+  #error a member J which was not found either ...
   #endif
   PyObject * _gsl_multifit_fdfsolver_getJ(gsl_multifit_fdfsolver * s)
   {

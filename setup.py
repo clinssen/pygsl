@@ -67,9 +67,9 @@ GSL_ERROR_HANDLER = 1
 # No debug information
 #DEBUG_LEVEL = 0
 # dynamic debug information
-DEBUG_LEVEL = 1
+#DEBUG_LEVEL = 1
 # Compile time set debug level
-#DEBUG_LEVEL = 10
+DEBUG_LEVEL = 10
 #####
 #------------------------------------------------------------------------------
 # As long as you are not taking part in the development process, I hope that
