@@ -55,7 +55,9 @@ PyGSL is installed to the Python packages path, and can be uninstalled by typing
 Installation via PyPI
 ~~~~~~~~~~~~~~~~~~~~~
 
-PyGSL can also be installed using the pip package installer. Simply type:
+PyGSL can also be installed using the pip package installer. SWIG is required to be installed and can usually be found via your distribution's package manager (for example, ``apt install swig``).
+
+To install PyGSL from PyPI, simply type:
 
 .. code-block:: sh
 

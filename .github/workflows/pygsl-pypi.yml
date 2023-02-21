@@ -1,6 +1,7 @@
 name: PyGSL from PyPI
 on:
-  schedule:
+  [push, pull_request]
+#  schedule:
     #        ┌───────────── minute (0 - 59)
     #        │ ┌───────────── hour (0 - 23)
     #        │ │ ┌───────────── day of the month (1 - 31)
@@ -10,11 +11,11 @@ on:
     #        │ │ │ │ │
     #        │ │ │ │ │
     #        * * * * *
-    - cron: '30 5 * * 0'
+#    - cron: '30 5 * * 0'
 
 jobs:
   pypi:
-    # Build and test only, use pre-generated SWIG wrappers, install from PyPI
+    # Install from PyPI
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -36,7 +37,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install libgsl0-dev libncurses5-dev libreadline6-dev pkg-config
           sudo apt-get install python3-all-dev python3-matplotlib python3-numpy python3-scipy
-          sudo apt remove --yes --purge "^swig.*"
+          sudo apt-get install swig
+          apt search libgsl
 
       # Install Python dependencies
       - name: Python dependencies
